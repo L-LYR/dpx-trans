@@ -6,4 +6,4 @@ revision = dev/custom_buffer
 patch_directory = zpp_bits
 
 [provide]
-zpp_bits = zpp_bits_dep
+dependency_names = zpp_bits

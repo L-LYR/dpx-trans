@@ -6,4 +6,4 @@ revision = master
 patch_directory = dbg-macro
 
 [provide]
-dbg_macro = dbg_macro_dep
+dependency_names = dbg-macro
