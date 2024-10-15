@@ -18,7 +18,7 @@ dependencies += dependency('threads', required: true)
 
 include_directories = []
 
-subproject('dbg-macro')
-subproject('zpp_bits')
+dependencies += subproject('liburing').get_variable('uring')
 
 subdir('lib')
+subdir('sample')
