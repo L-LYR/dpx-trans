@@ -3,3 +3,8 @@
 !/subprojects/packagefiles
 
 .clangd
+
+.cache
+.trash
+
+.vscode
