@@ -7,7 +7,8 @@ struct CustomByteArray {
   using value_type = char;
 
   CustomByteArray(size_t init_size = 1024)
-      : raw_length(init_size), raw_capacity(init_size),
+      : raw_length(init_size),
+        raw_capacity(init_size),
         raw_bytes(reinterpret_cast<value_type *>(calloc(init_size, 1))) {}
   ~CustomByteArray() { free(raw_bytes); }
 
@@ -32,7 +33,7 @@ struct CustomByteArray {
     raw_bytes = reinterpret_cast<value_type *>(realloc(raw_bytes, needed_size));
   }
 
-private:
+ private:
   size_t raw_length;
   size_t raw_capacity;
   value_type *raw_bytes;
@@ -60,7 +61,6 @@ int main() {
   dbg(o.position());
   dbg(sizeof(d));
   std::cout << Hexdump(cba.data(), o.position()) << std::endl;
-  std::cout << std::format("{}", Hexdump(cba.data(), o.position()))
-            << std::endl;
+  std::cout << std::format("{}", Hexdump(cba.data(), o.position())) << std::endl;
   return 0;
 }

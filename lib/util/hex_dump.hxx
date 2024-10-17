@@ -5,10 +5,11 @@
 #include <iomanip>
 #include <ostream>
 #include <span>
+#include <sstream>
 
-template <size_t RowSize = 16, bool ShowAscii = true> struct CustomHexdump {
-  CustomHexdump(void *data, size_t length)
-      : s(reinterpret_cast<uint8_t *>(data), length) {}
+template <size_t RowSize = 16, bool ShowAscii = true>
+struct CustomHexdump {
+  CustomHexdump(void *data, size_t length) : s(reinterpret_cast<uint8_t *>(data), length) {}
   std::span<uint8_t> s;
 };
 
@@ -25,7 +26,7 @@ std::string to_string(const CustomHexdump<RowSize, ShowAscii> &dump) {
       if (i + j < s.size()) {
         out << hex_lookup[s[i + j] >> 4] << hex_lookup[s[i + j] & 0xF] << ' ';
       } else {
-        out << ' ' << ' ' << ' ';
+        out << "  ";
       }
     }
     out << ' ';
@@ -40,23 +41,22 @@ std::string to_string(const CustomHexdump<RowSize, ShowAscii> &dump) {
   }
   return out.str();
 }
-} // namespace std
+}  // namespace std
 
 template <size_t RowSize, bool ShowAscii>
-std::ostream &operator<<(std::ostream &out,
-                         const CustomHexdump<RowSize, ShowAscii> &dump) {
+std::ostream &operator<<(std::ostream &out, const CustomHexdump<RowSize, ShowAscii> &dump) {
   return out << std::to_string(dump);
 }
 
 template <size_t RowSize, bool ShowAscii>
 struct std::formatter<CustomHexdump<RowSize, ShowAscii>> {
-  template <typename Context> constexpr Context::iterator parse(Context &ctx) {
+  template <typename Context>
+  constexpr Context::iterator parse(Context &ctx) {
     return ctx.end();
   }
 
   template <typename Context>
-  Context::iterator format(CustomHexdump<RowSize, ShowAscii> dump,
-                           Context &ctx) const {
+  Context::iterator format(CustomHexdump<RowSize, ShowAscii> dump, Context &ctx) const {
     return std::ranges::copy(std::to_string(dump), ctx.out()).out;
   }
 };

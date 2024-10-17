@@ -7,10 +7,22 @@ project(
     default_options: [
         'warning_level=3',
         'optimization=3',
-        'cpp_std=c++23',
+        'cpp_std=c++26',
         'c_std=c2x',
         'buildtype=release',
     ],
+)
+
+add_project_arguments(
+    '-Wno-c++23-extensions',
+    language: ['cpp'],
+)
+add_project_arguments(
+    '-Wno-c99-extensions',
+    '-Wno-gnu-anonymous-struct',
+    '-Wno-nested-anon-types',
+    '-Wno-zero-length-array',
+    language: ['c', 'cpp'],
 )
 
 dependencies = []
