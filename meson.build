@@ -32,6 +32,13 @@ include_directories = []
 
 dependencies += subproject('dbg-macro').get_variable('dbg_macro_dep')
 dependencies += subproject('zpp_bits').get_variable('zpp_bits_dep')
+dependencies += subproject(
+    'spdlog',
+    default_options: [
+        'tests=disabled',
+        'std_format=enabled',
+    ],
+).get_variable('spdlog_dep')
 dependencies += subproject('liburing').get_variable('uring')
 
 cmake = import('cmake')
