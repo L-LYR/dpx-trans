@@ -1,9 +1,29 @@
+#include <args.hxx>
+
 #include "tcp_common.hxx"
 
-int main() {
+int main(int args, char* argv[]) {
+  args::ArgumentParser p("Sample tcp server");
+  args::HelpFlag help(p, "help", "Display this help menu", {'h', "help"});
+  args::ValueFlag<std::string> local_ip(p, "local ip", "local ip", {"local_ip"}, args::Options::Required);
+  args::ValueFlag<uint16_t> local_port(p, "local port", "local port", {"local_port"}, args::Options::Required);
+
+  try {
+    p.ParseCLI(args, argv);
+  } catch (args::Help) {
+    std::cout << p;
+    return 0;
+  } catch (args::ParseError e) {
+    std::cerr << e.what() << std::endl << std::endl << p;
+    return -1;
+  } catch (args::ValidationError e) {
+    std::cerr << e.what() << std::endl << std::endl << p;
+    return -1;
+  }
+
   Endpoint e1(Buffers(10));
   Endpoint e2(Buffers(10));
-  std::jthread bg_connector([&]() { Connector("192.168.200.20", 10086).listen_loop({e1, e2}); });
+  std::jthread bg_connector([&]() { Connector(args::get(local_ip), args::get(local_port)).listen_loop({e1, e2}); });
 
   auto echo = [](Endpoint& e) {
     e.wait_and_then([&](int sock) {

@@ -8,13 +8,13 @@ executable(
 executable(
     'tcp_server',
     files('tcp_server.cxx'),
-    dependencies: dependencies,
+    dependencies: dependencies + args_dep,
     include_directories: include_directories,
 )
 
 executable(
     'tcp_client',
     files('tcp_client.cxx'),
-    dependencies: dependencies,
+    dependencies: dependencies + args_dep,
     include_directories: include_directories,
 )
