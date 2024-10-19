@@ -24,7 +24,8 @@ int main(int args, char* argv[]) {
 
   Endpoint e1(Buffers(10));
   Endpoint e2(Buffers(10));
-  std::jthread bg_acceptor([&]() { Acceptor({e1, e2}, args::get(local_ip), args::get(local_port)).listen(); });
+  Acceptor a({e1, e2}, args::get(local_ip), args::get(local_port));
+  std::jthread bg_acceptor([&a]() { a.listen(); });
 
   auto echo = [](Endpoint& e) {
     e.wait_and_ignore();  // wait for a connection
@@ -37,5 +38,6 @@ int main(int args, char* argv[]) {
 
   std::jthread bg_e1(echo, std::ref(e1));
   std::jthread bg_e2(echo, std::ref(e2));
+  // a.shutdown();
   return 0;
 }

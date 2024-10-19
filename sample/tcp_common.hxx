@@ -13,6 +13,7 @@
 #include <string>
 #include <vector>
 
+#include "common.hxx"
 #include "memory/simple_buffer.hxx"
 #include "util/fatal.hxx"
 #include "util/hex_dump.hxx"
@@ -20,22 +21,17 @@
 #include "util/noncopyable.hxx"
 #include "util/nonmovable.hxx"
 
-enum class Side {
-  ClientSide,
-  ServerSide,
-};
-
 using Buffers = std::vector<Buffer>;
 
 class Acceptor;
 class Connector;
-// created from a Connector
+
 class Endpoint : Noncopyable, Nonmovable {
   friend class Acceptor;
   friend class Connector;
 
  public:
-  Endpoint(/* Context ctx, */ Buffers &&buffers_) : buffers(std::move(buffers_)) {
+  Endpoint(Buffers &&buffers_) : buffers(std::move(buffers_)) {
     if (auto ec = io_uring_queue_init(16, &ring, 0); ec < 0) {
       die("Fail to init ring, errno: {}", -ec);
     }
@@ -54,9 +50,6 @@ class Endpoint : Noncopyable, Nonmovable {
       die("Fail to unregister buffers, errno: {}", -ec);
     }
     io_uring_queue_exit(&ring);
-    if (auto ec = close(sock); ec < 0) {
-      die("Fail to close socket, errno: {}", errno);
-    }
   };
 
   bool is_established() { return sock != -1; }
@@ -183,23 +176,24 @@ class Endpoint : Noncopyable, Nonmovable {
  private:
   // TODO better one
   Buffer &get_buffer() {
-    idx = (idx + 1) % buffers.size();
-    buffers[idx].clear();
-    return buffers[idx];
+    active_buffer_idx = (active_buffer_idx + 1) % buffers.size();
+    buffers[active_buffer_idx].clear();
+    return buffers[active_buffer_idx];
   }
-  int ring_fd() { return ring.ring_fd; }
+  int ring_fd() const { return ring.ring_fd; }
   void set_sock(int sock_) { sock = sock_; }
+  int get_sock() const { return sock; }
 
   io_uring ring;
-  int sock = -1;
   Buffers buffers;
-  uint32_t idx = 0;
+  uint32_t active_buffer_idx = 0;
+  int sock = -1;  // not own
 };
 
 class ConnectionHandle : Noncopyable {
  public:
   ConnectionHandle(Side side_) : side(side_) {}
-  ~ConnectionHandle() { close(); };
+  ~ConnectionHandle() { close(sock); };
 
   ConnectionHandle(ConnectionHandle &&other) {
     side = other.side;
@@ -207,7 +201,7 @@ class ConnectionHandle : Noncopyable {
   }
   ConnectionHandle &operator=(ConnectionHandle &&other) {
     if (this != &other) {
-      close();
+      close(sock);
       side = other.side;
       sock = std::exchange(other.sock, -1);
     }
@@ -215,11 +209,12 @@ class ConnectionHandle : Noncopyable {
   }
 
  protected:
-  void close() {
+  static void close(int sock) {
     if (sock != -1) {
       if (auto ec = ::close(sock); ec < 0) {
         die("Fail to close socket, errno: {}", errno);
       }
+      sock = -1;
     }
   }
 
@@ -260,8 +255,11 @@ class Acceptor : ConnectionHandle {
 
  public:
   Acceptor(EndpointRefs &&endpoints_, std::string ip_, uint16_t port_)
-      : ConnectionHandle(Side::ServerSide), endpoints(std::move(endpoints_)), ip(ip_), port(port_) {
-    // initialize ring
+      : ConnectionHandle(Side::ServerSide),
+        endpoints(std::move(endpoints_)),
+        contexts(endpoints.size()),
+        ip(ip_),
+        port(port_) {
     if (auto ec = io_uring_queue_init(endpoints.size() * 2, &ring, 0); ec < 0) {
       die("Fail to init ring, errno {}", -ec);
     }
@@ -270,16 +268,15 @@ class Acceptor : ConnectionHandle {
   ~Acceptor() { io_uring_queue_exit(&ring); };
 
   void listen() {
-    // listen
     if (auto ec = ::listen(sock, /* backlog */ 10); ec < 0) {
       die("Fail to listen {}:{}, errno {}", ip, port, errno);
     }
-    std::vector<accept_ctx_t> ctxs(endpoints.size());
     for (auto i = 0uz; i < endpoints.size(); ++i) {
+      auto &ctx = contexts[i];
       auto accept_sqe = io_uring_get_sqe(&ring);
-      io_uring_prep_accept(accept_sqe, sock, reinterpret_cast<sockaddr *>(&ctxs[i].addr), &ctxs[i].addr_len, 0);
-      ctxs[i].index = i;
-      io_uring_sqe_set_data(accept_sqe, &ctxs[i]);
+      io_uring_prep_accept(accept_sqe, sock, reinterpret_cast<sockaddr *>(&ctx.addr), &ctx.addr_len, 0);
+      ctx.index = i;
+      io_uring_sqe_set_data(accept_sqe, &contexts[i]);
     }
     if (auto ec = io_uring_submit(&ring); ec < 0) {
       die("Fail to submit accept sqes, errno {}", -ec);
@@ -306,6 +303,7 @@ class Acceptor : ConnectionHandle {
         auto msg_sqe = io_uring_get_sqe(&ring);
         auto &endpoint = endpoints[ctx->index].get();
         endpoint.set_sock(cqe->res);
+        ctx->client_sock = cqe->res;
         io_uring_prep_msg_ring(msg_sqe, endpoint.ring_fd(), 0, 0, 0);
         io_uring_sqe_set_data(msg_sqe, nullptr);
         if (auto ec = io_uring_submit(&ring); ec < 0) {
@@ -317,14 +315,23 @@ class Acceptor : ConnectionHandle {
     }
   }
 
+  void shutdown() {
+    // TODO add block wait
+    for (auto &ctx : contexts) {
+      close(ctx.client_sock);
+    }
+  }
+
  private:
   struct accept_ctx_t {
-    sockaddr_in addr = {};
+    int client_sock = -1;
     socklen_t addr_len = sizeof(addr);
+    sockaddr_in addr = {};
     size_t index = -1;
   };
 
   EndpointRefs endpoints;
+  std::vector<accept_ctx_t> contexts;
   io_uring ring;
   std::string ip = "";
   uint16_t port = -1;
@@ -336,17 +343,16 @@ class Connector : ConnectionHandle {
             uint16_t local_port_)
       : ConnectionHandle(Side::ClientSide),
         endpoint(endpoint_),
-        remote_ip(remote_ip_),
+        remote_ip(std::move(remote_ip_)),
         local_ip(local_ip_),
-        remote_port(remote_port_),
+        remote_port(std::move(remote_port_)),
         local_port(local_port_) {
     setup(local_ip, local_port);
   }
 
-  ~Connector() {}
+  ~Connector() = default;
 
   void connect() {
-    // connect
     auto remote_ip_in = inet_addr(remote_ip.c_str());
     if (remote_ip_in == INADDR_NONE) {
       die("Wrong format remote ip {}", remote_ip);
@@ -361,8 +367,10 @@ class Connector : ConnectionHandle {
       die("Fail to connect with remote server {}:{}, errno {}", remote_ip, remote_port, errno);
     }
     std::cout << "Ok!" << std::endl;
-    endpoint.set_sock(std::exchange(sock, -1));
+    endpoint.set_sock(sock);
   }
+
+  void disconnect() { close(sock); }
 
  private:
   Endpoint &endpoint;

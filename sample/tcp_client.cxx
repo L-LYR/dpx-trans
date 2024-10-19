@@ -24,7 +24,8 @@ int main(int args, char* argv[]) {
     return -1;
   }
   Endpoint e(Buffers(10));
-  Connector(e, args::get(remote_ip), args::get(remote_port), args::get(local_ip), args::get(local_port)).connect();
+  Connector c(e, args::get(remote_ip), args::get(remote_port), args::get(local_ip), args::get(local_port));
+  c.connect();
   auto resp = e.call<EchoRpc>(PayloadType{.id = 1, .message = "Hello"});
   INFO("{}", glz::write_json<>(resp).value_or("Corrupted Payload!"));
   return 0;
