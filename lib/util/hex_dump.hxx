@@ -16,7 +16,7 @@ struct CustomHexdump {
 namespace std {
 template <size_t RowSize, bool ShowAscii>
 std::string to_string(const CustomHexdump<RowSize, ShowAscii> &dump) {
-  constexpr static char hex_lookup[] = "012345678ABCDEF";
+  constexpr static char hex_lookup[] = "0123456789ABCDEF";
   std::stringstream out;
   auto &s = dump.s;
   out.fill('0');
@@ -26,7 +26,7 @@ std::string to_string(const CustomHexdump<RowSize, ShowAscii> &dump) {
       if (i + j < s.size()) {
         out << hex_lookup[s[i + j] >> 4] << hex_lookup[s[i + j] & 0xF] << ' ';
       } else {
-        out << "  ";
+        out << "   ";
       }
     }
     out << ' ';
