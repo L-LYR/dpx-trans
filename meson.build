@@ -39,7 +39,8 @@ dependencies += subproject(
         'std_format=enabled',
     ],
 ).get_variable('spdlog_dep')
-dependencies += subproject('liburing').get_variable('uring')
+uring_dep = subproject('liburing').get_variable('uring')
+dependencies += uring_dep
 
 cmake = import('cmake')
 
@@ -59,3 +60,4 @@ args_dep = subproject('args').get_variable('args_dep')
 
 subdir('lib')
 subdir('sample')
+subdir('tool')
