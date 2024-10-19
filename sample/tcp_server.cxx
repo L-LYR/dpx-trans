@@ -1,4 +1,5 @@
 #include <args.hxx>
+#include <glaze/glaze.hpp>
 
 #include "tcp_common.hxx"
 
@@ -23,20 +24,15 @@ int main(int args, char* argv[]) {
 
   Endpoint e1(Buffers(10));
   Endpoint e2(Buffers(10));
-  std::jthread bg_connector([&]() { Connector(args::get(local_ip), args::get(local_port)).listen_loop({e1, e2}); });
+  std::jthread bg_acceptor([&]() { Acceptor({e1, e2}, args::get(local_ip), args::get(local_port)).listen(); });
 
   auto echo = [](Endpoint& e) {
-    e.wait_and_then([&](int sock) {
-      if (sock < 0) {
-        die("Fail to establish connection, errno {}", sock);
-      }
-      e.set_sock(sock);
-    });
-    auto payload = e.read<PayloadType>();
-    SPDLOG_INFO("{} {}", payload.id, payload.message);
-    payload.id++;
-    payload.message += ", World";
-    e.write(std::move(payload));
+    e.wait_and_ignore();  // wait for a connection
+    auto req = e.read<PayloadType>();
+    SPDLOG_INFO("{}", glz::write_json<>(req).value_or("Corrupted Payload!"));
+    req.id++;
+    req.message += ", World";
+    e.write(std::move(req));
   };
 
   std::jthread bg_e1(echo, std::ref(e1));

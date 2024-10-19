@@ -1,4 +1,5 @@
 #include <args.hxx>
+#include <glaze/glaze.hpp>
 
 #include "tcp_common.hxx"
 
@@ -23,13 +24,8 @@ int main(int args, char* argv[]) {
     return -1;
   }
   Endpoint e(Buffers(10));
-  Connector(args::get(remote_ip), args::get(remote_port), args::get(local_ip), args::get(local_port)).connect_with(e);
-
-  auto resp = e.call<EchoRpc>(PayloadType{
-      .id = 1,
-      .message = "Hello",
-  });
-
-  SPDLOG_INFO("{} {}", resp.id, resp.message);
+  Connector(e, args::get(remote_ip), args::get(remote_port), args::get(local_ip), args::get(local_port)).connect();
+  auto resp = e.call<EchoRpc>(PayloadType{.id = 1, .message = "Hello"});
+  SPDLOG_INFO("{}", glz::write_json<>(resp).value_or("Corrupted Payload!"));
   return 0;
 }

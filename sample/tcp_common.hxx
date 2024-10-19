@@ -19,6 +19,7 @@
 #include "util/fatal.hxx"
 #include "util/hex_dump.hxx"
 #include "util/noncopyable.hxx"
+#include "util/nonmovable.hxx"
 
 enum class Side {
   ClientSide,
@@ -82,9 +83,11 @@ class Buffer : Noncopyable {
 
 using Buffers = std::vector<Buffer>;
 
+class Acceptor;
 class Connector;
 // created from a Connector
-class Endpoint : Noncopyable {
+class Endpoint : Noncopyable, Nonmovable {
+  friend class Acceptor;
   friend class Connector;
 
  public:
@@ -112,7 +115,7 @@ class Endpoint : Noncopyable {
     }
   };
 
-  void set_sock(int sock_) { sock = sock_; }
+  bool is_established() { return sock != -1; }
 
   template <typename Fn>
   bool try_wait_and_then(Fn &&fn) {
@@ -240,8 +243,8 @@ class Endpoint : Noncopyable {
     buffers[idx].clear();
     return buffers[idx];
   }
-
   int ring_fd() { return ring.ring_fd; }
+  void set_sock(int sock_) { sock = sock_; }
 
   io_uring ring;
   int sock = -1;
@@ -249,20 +252,34 @@ class Endpoint : Noncopyable {
   uint32_t idx = 0;
 };
 
-class Connector : Noncopyable {
+class ConnectionHandle : Noncopyable {
  public:
-  Connector(std::string remote_ip_, uint16_t remote_port_, std::string local_ip_, uint16_t local_port_)
-      : side(Side::ClientSide),
-        remote_ip(remote_ip_),
-        local_ip(local_ip_),
-        remote_port(remote_port_),
-        local_port(local_port_) {}
-  Connector(std::string local_ip_, uint16_t local_port_)
-      : side(Side::ServerSide), local_ip(local_ip_), local_port(local_port_) {}
-  ~Connector() {}
+  ConnectionHandle(Side side_) : side(side_) {}
+  ~ConnectionHandle() { close(); };
 
-  // common
-  void do_bind() {
+  ConnectionHandle(ConnectionHandle &&other) {
+    side = other.side;
+    sock = std::exchange(other.sock, -1);
+  }
+  ConnectionHandle &operator=(ConnectionHandle &&other) {
+    if (this != &other) {
+      close();
+      side = other.side;
+      sock = std::exchange(other.sock, -1);
+    }
+    return *this;
+  }
+
+ protected:
+  void close() {
+    if (sock != -1) {
+      if (auto ec = ::close(sock); ec < 0) {
+        die("Fail to close socket, errno: {}", errno);
+      }
+    }
+  }
+
+  void setup(std::string_view ipv4, uint16_t port) {
     // create socket
     sock = socket(AF_INET, SOCK_STREAM, 0);
     if (sock < -1) {
@@ -274,44 +291,45 @@ class Connector : Noncopyable {
       die("Fail to set socket options, errno {}", errno);
     }
     // bind
-    auto local_ip_in = inet_addr(local_ip.c_str());
-    if (local_ip_in == INADDR_NONE) {
-      die("Wrong format local ip {}", local_ip);
+    auto ip_in = inet_addr(ipv4.data());
+    if (ip_in == INADDR_NONE) {
+      die("Wrong format local ip {}", ipv4);
     }
-    auto local_addr_in = sockaddr_in{
+    auto add_in = sockaddr_in{
         .sin_family = AF_INET,
-        .sin_port = htons(local_port),
-        .sin_addr =
-            {
-                .s_addr = local_ip_in,
-            },
+        .sin_port = htons(port),
+        .sin_addr = {.s_addr = ip_in},
         .sin_zero = {},
     };
-    if (auto ec = bind(sock, reinterpret_cast<const sockaddr *>(&local_addr_in), sizeof(local_addr_in)); ec < 0) {
-      die("Fail to bind {}:{}, errno {}", local_ip, local_port, errno);
+    if (auto ec = bind(sock, reinterpret_cast<const sockaddr *>(&add_in), sizeof(add_in)); ec < 0) {
+      die("Fail to bind {}:{}, errno {}", ipv4, port, errno);
     }
   }
 
-  // server side
-  void listen_loop(std::vector<std::reference_wrapper<Endpoint>> endpoints) {
-    // create socket
-    assert(side == Side::ServerSide);
-    do_bind();
-    // listen
-    if (auto ec = listen(sock, /* backlog */ 10); ec < 0) {
-      die("Fail to listen {}:{}, errno {}", local_ip, local_port, errno);
-    }
+  Side side;
+  int sock = -1;
+};
+
+class Acceptor : ConnectionHandle {
+  using EndpointRef = std::reference_wrapper<Endpoint>;
+  using EndpointRefs = std::vector<EndpointRef>;
+
+ public:
+  Acceptor(EndpointRefs &&endpoints_, std::string ip_, uint16_t port_)
+      : ConnectionHandle(Side::ServerSide), endpoints(std::move(endpoints_)), ip(ip_), port(port_) {
     // initialize ring
-    io_uring ring;
     if (auto ec = io_uring_queue_init(endpoints.size() * 2, &ring, 0); ec < 0) {
-      die("Fail to init ring, errno {}", ec);
+      die("Fail to init ring, errno {}", -ec);
     }
-    // accept connection request
-    struct accept_ctx_t {
-      sockaddr_in addr = {};
-      socklen_t addr_len = sizeof(addr);
-      size_t index = -1;
-    };
+    setup(ip, port);
+  }
+  ~Acceptor() { io_uring_queue_exit(&ring); };
+
+  void listen() {
+    // listen
+    if (auto ec = ::listen(sock, /* backlog */ 10); ec < 0) {
+      die("Fail to listen {}:{}, errno {}", ip, port, errno);
+    }
     std::vector<accept_ctx_t> ctxs(endpoints.size());
     for (auto i = 0uz; i < endpoints.size(); ++i) {
       auto accept_sqe = io_uring_get_sqe(&ring);
@@ -320,41 +338,70 @@ class Connector : Noncopyable {
       io_uring_sqe_set_data(accept_sqe, &ctxs[i]);
     }
     if (auto ec = io_uring_submit(&ring); ec < 0) {
-      die("Fail to submit accept sqes, errno {}", ec);
+      die("Fail to submit accept sqes, errno {}", -ec);
     }
     io_uring_cqe *cqe = nullptr;
     auto established = 0uz;
     auto accepted = 0uz;
     while (established < endpoints.size() && accepted < endpoints.size()) {
       if (auto ec = io_uring_wait_cqe(&ring, &cqe); ec < 0) {
-        die("Fail to wait cqe, errno {}", ec);
+        die("Fail to wait cqe, errno {}", -ec);
+      }
+      if (cqe->res < 0) {
+        die("Fail to accept one connection, errno {}", -cqe->res);
       }
       if (auto data = io_uring_cqe_get_data(cqe); data == nullptr) {
         SPDLOG_INFO("establish one connection");
         if (cqe->res != 0) {
-          die("Fail to send msg, errno {}", cqe->res);
+          die("Fail to send msg, errno {}", -cqe->res);
         }
         ++established;
       } else {
         auto ctx = reinterpret_cast<accept_ctx_t *>(data);
         SPDLOG_INFO("accept client addr: {}:{}", inet_ntoa(ctx->addr.sin_addr), ntohs(ctx->addr.sin_port));
         auto msg_sqe = io_uring_get_sqe(&ring);
-        io_uring_prep_msg_ring(msg_sqe, endpoints[ctx->index].get().ring_fd(), cqe->res, 0, 0);
+        auto &endpoint = endpoints[ctx->index].get();
+        endpoint.set_sock(cqe->res);
+        io_uring_prep_msg_ring(msg_sqe, endpoint.ring_fd(), 0, 0, 0);
         io_uring_sqe_set_data(msg_sqe, nullptr);
         if (auto ec = io_uring_submit(&ring); ec < 0) {
-          die("Fail to submit establish sqe, errno {}", ec);
+          die("Fail to submit establish sqe, errno {}", -ec);
         }
         ++accepted;
       }
       io_uring_cqe_seen(&ring, cqe);
     }
-    io_uring_queue_exit(&ring);
   }
 
-  // client side
-  void connect_with(Endpoint &e) {
-    assert(side == Side::ClientSide);
-    do_bind();
+ private:
+  struct accept_ctx_t {
+    sockaddr_in addr = {};
+    socklen_t addr_len = sizeof(addr);
+    size_t index = -1;
+  };
+
+  EndpointRefs endpoints;
+  io_uring ring;
+  std::string ip = "";
+  uint16_t port = -1;
+};
+
+class Connector : ConnectionHandle {
+ public:
+  Connector(Endpoint &endpoint_, std::string remote_ip_, uint16_t remote_port_, std::string local_ip_,
+            uint16_t local_port_)
+      : ConnectionHandle(Side::ClientSide),
+        endpoint(endpoint_),
+        remote_ip(remote_ip_),
+        local_ip(local_ip_),
+        remote_port(remote_port_),
+        local_port(local_port_) {
+    setup(local_ip, local_port);
+  }
+
+  ~Connector() {}
+
+  void connect() {
     // connect
     auto remote_ip_in = inet_addr(remote_ip.c_str());
     if (remote_ip_in == INADDR_NONE) {
@@ -363,22 +410,18 @@ class Connector : Noncopyable {
     auto srv_addr = sockaddr_in{
         .sin_family = AF_INET,
         .sin_port = htons(remote_port),
-        .sin_addr =
-            {
-                .s_addr = remote_ip_in,
-            },
+        .sin_addr = {.s_addr = remote_ip_in},
         .sin_zero = {},
     };
-    if (auto ec = connect(sock, reinterpret_cast<sockaddr *>(&srv_addr), sizeof(srv_addr)); ec < 0) {
+    if (auto ec = ::connect(sock, reinterpret_cast<sockaddr *>(&srv_addr), sizeof(srv_addr)); ec < 0) {
       die("Fail to connect with remote server {}:{}, errno {}", remote_ip, remote_port, errno);
     }
     std::cout << "Ok!" << std::endl;
-    e.set_sock(sock);
+    endpoint.set_sock(std::exchange(sock, -1));
   }
 
  private:
-  Side side;
-  int sock = -1;
+  Endpoint &endpoint;
   std::string remote_ip = "";
   std::string local_ip = "";
   uint16_t remote_port = -1;
