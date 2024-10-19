@@ -90,7 +90,7 @@ class Endpoint : Noncopyable {
  public:
   Endpoint(/* Context ctx, */ Buffers &&buffers_) : buffers(std::move(buffers_)) {
     if (auto ec = io_uring_queue_init(16, &ring, 0); ec < 0) {
-      die("Fail to init ring");
+      die("Fail to init ring, errno: {}", -ec);
     }
     auto iovecs = std::vector<iovec>(buffers.size());
     for (auto i = 0uz; i < buffers.size(); ++i) {
@@ -99,17 +99,50 @@ class Endpoint : Noncopyable {
       buffers[i].set_index(i);
     }
     if (auto ec = io_uring_register_buffers(&ring, iovecs.data(), buffers.size()); ec < 0) {
-      die("Fail to register buffers");
+      die("Fail to register buffers, errno: {}", -ec);
     }
   }
   ~Endpoint() {
+    if (auto ec = io_uring_unregister_buffers(&ring); ec < 0) {
+      die("Fail to unregister buffers, errno: {}", -ec);
+    }
     io_uring_queue_exit(&ring);
-    close(sock);
+    if (auto ec = close(sock); ec < 0) {
+      die("Fail to close socket, errno: {}", errno);
+    }
   };
 
   void set_sock(int sock_) { sock = sock_; }
 
-  void wait() {
+  template <typename Fn>
+  bool try_wait_and_then(Fn &&fn) {
+    io_uring_cqe *cqe = nullptr;
+    if (io_uring_peek_cqe(&ring, &cqe) == 0) {
+      return false;
+    }
+    if constexpr (std::is_invocable_v<Fn, int>) {
+      fn(cqe->res);
+    } else if constexpr (std::is_invocable_v<Fn, int, uint64_t>) {
+      fn(cqe->res, io_uring_cqe_get_data64(cqe));
+    } else if constexpr (std::is_invocable_v<Fn, int, void *>) {
+      fn(cqe->res, io_uring_cqe_get_data(cqe));
+    } else {
+      // do nothing
+      SPDLOG_CRITICAL("Mismatched Fn?");
+    }
+    io_uring_cqe_seen(&ring, cqe);
+    return true;
+  }
+
+  void try_wait_nr(int /*n*/) {
+    // todo
+  }
+
+  void wait_nr(int /*n*/) {
+    // todo
+  }
+
+  void wait_and_ignore() {
     wait_and_then([](int res) {
       if (res != 0) {
         SPDLOG_ERROR("Something wrong with one cqe, but ignored");
@@ -121,7 +154,7 @@ class Endpoint : Noncopyable {
   void wait_and_then(Fn &&fn) {
     io_uring_cqe *cqe = nullptr;
     if (auto ec = io_uring_wait_cqe(&ring, &cqe); ec < 0) {
-      die("Fail to wait cqe, errno {}", ec);
+      die("Fail to wait cqe, errno {}", -ec);
     }
     if constexpr (std::is_invocable_v<Fn, int>) {
       fn(cqe->res);
@@ -131,65 +164,77 @@ class Endpoint : Noncopyable {
       fn(cqe->res, io_uring_cqe_get_data(cqe));
     } else {
       // do nothing
-      SPDLOG_INFO("?");
+      SPDLOG_CRITICAL("Mismatched Fn?");
     }
     io_uring_cqe_seen(&ring, cqe);
   }
 
-  template <typename Payload>
-  void post_write(Payload &&payload) {
+  void post_write(Buffer &in, size_t nbytes) {
     assert(sock != -1);
-    auto &in_buffer = get_buffer();
-    auto serializer = zpp::bits::out(in_buffer);
-    serializer(payload).or_throw();
-    std::cout << std::endl << Hexdump(in_buffer.data(), serializer.position()) << std::endl;
+    assert(nbytes <= in.size());
     auto w_sqe = io_uring_get_sqe(&ring);
-    io_uring_prep_write_fixed(w_sqe, sock, in_buffer.data(), serializer.position(), 0, in_buffer.index());
+    io_uring_prep_write_fixed(w_sqe, sock, in.data(), nbytes, 0, in.index());
     if (auto ec = io_uring_submit(&ring); ec < 0) {
-      die("Fail to submit write sqe, errno {}", ec);
+      die("Fail to submit write sqe, errno {}", -ec);
+    }
+  }
+
+  void post_read(Buffer &out, size_t nbytes) {
+    assert(sock != -1);
+    assert(nbytes);
+    auto r_sqe = io_uring_get_sqe(&ring);
+    io_uring_prep_read_fixed(r_sqe, sock, out.data(), nbytes, 0, out.index());
+    if (auto ec = io_uring_submit(&ring); ec < 0) {
+      die("Fail to submit read sqe, errno {}", -ec);
     }
   }
 
   template <typename Payload>
   void write(Payload &&payload) {
-    post_write(std::forward<Payload>(payload));
+    auto &in = get_buffer();
+    auto serializer = zpp::bits::out(in);
+    serializer(payload).or_throw();
+    std::cout << std::endl << Hexdump(in.data(), serializer.position()) << std::endl;
+    post_write(in, serializer.position());
     wait_and_then([](int n) {
       if (n < 0) {
-        die("Fail to write payload");
+        die("Fail to write payload, errno {}", -n);
       }
       SPDLOG_INFO("Write {} bytes", n);
     });
   }
 
-  void post_read() {
-    assert(sock != -1);
-    auto &out_buffer = get_buffer();
-    auto r_sqe = io_uring_get_sqe(&ring);
-    io_uring_prep_read_fixed(r_sqe, sock, out_buffer.data(), out_buffer.size(), 0, out_buffer.index());
-    io_uring_sqe_set_data(r_sqe, &out_buffer);
-    if (auto ec = io_uring_submit(&ring); ec < 0) {
-      die("Fail to submit read sqe, errno {}", ec);
-    }
-  }
-
   template <typename Payload>
   Payload read() {
-    post_read();
+    auto &out = get_buffer();
+    post_read(out, out.size());
     auto resp = Payload{};
-    wait_and_then([&resp](int n, void *buf) {
-      auto out_buffer = reinterpret_cast<Buffer *>(buf);
+    wait_and_then([&resp, &out](int n) {
       if (n < 0) {
-        die("Fail to read payload");
+        die("Fail to read payload, errno {}", -n);
       }
       SPDLOG_INFO("Read {} bytes", n);
-      std::cout << std::endl << Hexdump(out_buffer->data(), n) << std::endl;
-      auto deserializer = zpp::bits::in(*out_buffer);
+      std::cout << std::endl << Hexdump(out.data(), n) << std::endl;
+      auto deserializer = zpp::bits::in(out);
       deserializer(resp).or_throw();
     });
     return resp;
   }
 
+  template <typename Rpc>
+  using req_t = typename Rpc::Request;
+
+  template <typename Rpc>
+  using resp_t = typename Rpc::Response;
+
+  template <typename Rpc>
+  resp_t<Rpc> call(req_t<Rpc> &&r) {
+    write(std::forward<req_t<Rpc>>(r));
+    return read<resp_t<Rpc>>();
+  }
+
  private:
+  // TODO better one
   Buffer &get_buffer() {
     idx = (idx + 1) % buffers.size();
     buffers[idx].clear();
@@ -202,11 +247,6 @@ class Endpoint : Noncopyable {
   int sock = -1;
   Buffers buffers;
   uint32_t idx = 0;
-};
-
-struct PayloadType {
-  uint32_t id;
-  std::string message;
 };
 
 class Connector : Noncopyable {
@@ -343,4 +383,14 @@ class Connector : Noncopyable {
   std::string local_ip = "";
   uint16_t remote_port = -1;
   uint16_t local_port = -1;
+};
+
+struct PayloadType {
+  uint32_t id;
+  std::string message;
+};
+
+struct EchoRpc {
+  using Request = PayloadType;
+  using Response = PayloadType;
 };

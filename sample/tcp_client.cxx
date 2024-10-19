@@ -24,11 +24,12 @@ int main(int args, char* argv[]) {
   }
   Endpoint e(Buffers(10));
   Connector(args::get(remote_ip), args::get(remote_port), args::get(local_ip), args::get(local_port)).connect_with(e);
-  e.write(PayloadType{
+
+  auto resp = e.call<EchoRpc>(PayloadType{
       .id = 1,
       .message = "Hello",
   });
-  auto payload = e.read<PayloadType>();
-  SPDLOG_INFO("{} {}", payload.id, payload.message);
+
+  SPDLOG_INFO("{} {}", resp.id, resp.message);
   return 0;
 }
