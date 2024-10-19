@@ -29,7 +29,7 @@ int main(int args, char* argv[]) {
   auto echo = [](Endpoint& e) {
     e.wait_and_ignore();  // wait for a connection
     auto req = e.read<PayloadType>();
-    SPDLOG_INFO("{}", glz::write_json<>(req).value_or("Corrupted Payload!"));
+    INFO("{}", glz::write_json<>(req).value_or("Corrupted Payload!"));
     req.id++;
     req.message += ", World";
     e.write(std::move(req));

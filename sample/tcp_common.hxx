@@ -3,7 +3,6 @@
 #include <arpa/inet.h>
 #include <liburing.h>
 #include <netinet/in.h>
-#include <spdlog/spdlog.h>
 #include <sys/socket.h>
 #include <zpp_bits.h>
 
@@ -17,6 +16,7 @@
 #include "memory/simple_buffer.hxx"
 #include "util/fatal.hxx"
 #include "util/hex_dump.hxx"
+#include "util/logger.hxx"
 #include "util/noncopyable.hxx"
 #include "util/nonmovable.hxx"
 
@@ -75,7 +75,7 @@ class Endpoint : Noncopyable, Nonmovable {
       fn(cqe->res, io_uring_cqe_get_data(cqe));
     } else {
       // do nothing
-      SPDLOG_CRITICAL("Mismatched Fn?");
+      CRITICAL("Mismatched Fn?");
     }
     io_uring_cqe_seen(&ring, cqe);
     return true;
@@ -92,7 +92,7 @@ class Endpoint : Noncopyable, Nonmovable {
   void wait_and_ignore() {
     wait_and_then([](int res) {
       if (res != 0) {
-        SPDLOG_ERROR("Something wrong with one cqe, but ignored");
+        ERROR("Something wrong with one cqe, but ignored");
       }
     });
   }
@@ -111,7 +111,7 @@ class Endpoint : Noncopyable, Nonmovable {
       fn(cqe->res, io_uring_cqe_get_data(cqe));
     } else {
       // do nothing
-      SPDLOG_CRITICAL("Mismatched Fn?");
+      CRITICAL("Mismatched Fn?");
     }
     io_uring_cqe_seen(&ring, cqe);
   }
@@ -147,7 +147,7 @@ class Endpoint : Noncopyable, Nonmovable {
       if (n < 0) {
         die("Fail to write payload, errno {}", -n);
       }
-      SPDLOG_INFO("Write {} bytes", n);
+      INFO("Write {} bytes", n);
     });
   }
 
@@ -160,8 +160,8 @@ class Endpoint : Noncopyable, Nonmovable {
       if (n < 0) {
         die("Fail to read payload, errno {}", -n);
       }
-      SPDLOG_INFO("Read {} bytes", n);
       std::cout << std::endl << Hexdump(out.data(), n) << std::endl;
+      INFO("Read {} bytes", n);
       auto deserializer = zpp::bits::in(out);
       deserializer(resp).or_throw();
     });
@@ -295,14 +295,14 @@ class Acceptor : ConnectionHandle {
         die("Fail to accept one connection, errno {}", -cqe->res);
       }
       if (auto data = io_uring_cqe_get_data(cqe); data == nullptr) {
-        SPDLOG_INFO("establish one connection");
+        INFO("establish one connection");
         if (cqe->res != 0) {
           die("Fail to send msg, errno {}", -cqe->res);
         }
         ++established;
       } else {
         auto ctx = reinterpret_cast<accept_ctx_t *>(data);
-        SPDLOG_INFO("accept client addr: {}:{}", inet_ntoa(ctx->addr.sin_addr), ntohs(ctx->addr.sin_port));
+        INFO("accept client addr: {}:{}", inet_ntoa(ctx->addr.sin_addr), ntohs(ctx->addr.sin_port));
         auto msg_sqe = io_uring_get_sqe(&ring);
         auto &endpoint = endpoints[ctx->index].get();
         endpoint.set_sock(cqe->res);
