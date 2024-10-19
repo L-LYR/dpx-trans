@@ -27,19 +27,29 @@ add_project_arguments(
 
 dependencies = []
 dependencies += dependency('threads', required: true)
+rdma_cm_dep = dependency('librdmacm', required: true)
+ibverbs_dep = dependency('libibverbs', required: true)
+dependencies += [rdma_cm_dep, ibverbs_dep]
 
 include_directories = []
 
-dependencies += subproject('dbg-macro').get_variable('dbg_macro_dep')
-dependencies += subproject('zpp_bits').get_variable('zpp_bits_dep')
+dependencies += subproject(
+    'dbg-macro',
+    required: true,
+).get_variable('dbg_macro_dep')
+dependencies += subproject(
+    'zpp_bits',
+    required: true,
+).get_variable('zpp_bits_dep')
 dependencies += subproject(
     'spdlog',
     default_options: [
         'tests=disabled',
         'std_format=enabled',
     ],
+    required: true,
 ).get_variable('spdlog_dep')
-uring_dep = subproject('liburing').get_variable('uring')
+uring_dep = subproject('liburing', required: true).get_variable('uring')
 dependencies += uring_dep
 
 cmake = import('cmake')
@@ -54,9 +64,10 @@ glaze_opt.add_cmake_defines(
 dependencies += cmake.subproject(
     'glaze',
     options: glaze_opt,
+    required: true,
 ).dependency('glaze_glaze')
 
-args_dep = subproject('args').get_variable('args_dep')
+args_dep = subproject('args', required: true).get_variable('args_dep')
 
 subdir('lib')
 subdir('sample')
