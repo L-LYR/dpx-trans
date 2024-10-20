@@ -3,11 +3,12 @@
 
 #include "tcp_common.hxx"
 
+using namespace std::chrono_literals;
+
 int main(int args, char* argv[]) {
   args::ArgumentParser p("Sample tcp server");
   args::HelpFlag help(p, "help", "Display this help menu", {'h', "help"});
   args::ValueFlag<std::string> local_ip(p, "local ip", "local ip", {"local_ip"}, args::Options::Required);
-  args::ValueFlag<uint16_t> local_port(p, "local port", "local port", {"local_port"}, args::Options::Required);
   args::ValueFlag<std::string> remote_ip(p, "remote ip", "remote ip", {"remote_ip"}, args::Options::Required);
   args::ValueFlag<uint16_t> remote_port(p, "remote port", "remote port", {"remote_port"}, args::Options::Required);
 
@@ -23,10 +24,14 @@ int main(int args, char* argv[]) {
     std::cerr << e.what() << std::endl << std::endl << p;
     return -1;
   }
-  Endpoint e(Buffers(10));
-  Connector c(e, args::get(remote_ip), args::get(remote_port), args::get(local_ip), args::get(local_port));
-  c.connect();
-  auto resp = e.call<EchoRpc>(PayloadType{.id = 1, .message = "Hello"});
-  INFO("{}", glz::write_json<>(resp).value_or("Corrupted Payload!"));
+  Connector c(args::get(remote_ip), args::get(remote_port), args::get(local_ip));
+  Endpoint e1(c.connect(), Buffers(10));
+  Endpoint e2(c.connect(), Buffers(10));
+  auto fn = [](Endpoint& e, uint32_t i) {
+    auto resp = e.call<EchoRpc>(PayloadType{.id = i, .message = "Hello"});
+    INFO("{}", glz::write_json<>(resp).value_or("Corrupted Payload!"));
+  };
+  std::jthread t1(fn, std::ref(e1), 1);
+  std::jthread t2(fn, std::ref(e2), 2);
   return 0;
 }

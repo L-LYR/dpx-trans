@@ -22,13 +22,12 @@ int main(int args, char* argv[]) {
     return -1;
   }
 
-  Endpoint e1(Buffers(10));
-  Endpoint e2(Buffers(10));
-  Acceptor a({e1, e2}, args::get(local_ip), args::get(local_port));
-  std::jthread bg_acceptor([&a]() { a.listen(); });
+  auto conns = Acceptor(args::get(local_ip), args::get(local_port)).listen_and_accept(2);
+
+  Endpoint e1(std::move(conns[0]), Buffers(10));
+  Endpoint e2(std::move(conns[1]), Buffers(10));
 
   auto echo = [](Endpoint& e) {
-    e.wait_and_ignore();  // wait for a connection
     auto req = e.read<PayloadType>();
     INFO("{}", glz::write_json<>(req).value_or("Corrupted Payload!"));
     req.id++;
@@ -38,6 +37,6 @@ int main(int args, char* argv[]) {
 
   std::jthread bg_e1(echo, std::ref(e1));
   std::jthread bg_e2(echo, std::ref(e2));
-  // a.shutdown();
+
   return 0;
 }
