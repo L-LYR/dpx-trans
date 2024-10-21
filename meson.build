@@ -7,7 +7,7 @@ project(
     default_options: [
         'warning_level=3',
         'optimization=3',
-        'cpp_std=c++26',
+        'cpp_std=c++20',
         'c_std=c2x',
         'buildtype=release',
     ],
@@ -22,6 +22,7 @@ add_project_arguments(
     '-Wno-gnu-anonymous-struct',
     '-Wno-nested-anon-types',
     '-Wno-zero-length-array',
+    '-Wno-deprecated-enum-enum-conversion',
     language: ['c', 'cpp'],
 )
 
