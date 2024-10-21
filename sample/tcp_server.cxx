@@ -25,9 +25,8 @@ int main(int args, char* argv[]) {
   Endpoint e1(Buffers(10));
   Endpoint e2(Buffers(10));
   Acceptor a(args::get(local_ip), args::get(local_port));
-  a.associate({e1, e2});
-  a.listen_and_accept();
-  INFO("Accpeted!");
+  a.associate({e1, e2}).listen_and_accept();
+
   auto echo = [](Endpoint& e) {
     auto req = e.read<PayloadType>();
     INFO("{}", glz::write_json<>(req).value_or("Corrupted Payload!"));

@@ -24,11 +24,11 @@ using Buffers = std::vector<Buffer>;
 
 class Connection;
 using ConnectionPtr = std::unique_ptr<Connection>;
-using ConnectionPtrs = std::vector<ConnectionPtr>;
 
-class Connection : ConnectionBase {
+class Connection : public ConnectionBase {
   friend class Acceptor;
   friend class Connector;
+  friend class Endpoint;
 
  public:
   ~Connection() {
@@ -40,17 +40,30 @@ class Connection : ConnectionBase {
     }
   }
 
-  int socket() const { return sock; }
-
  private:
-  Connection(Side side_, int sock_, std::string remote_ip_, uint16_t remote_port_, std::string local_ip_,
-             uint16_t local_port_)
-      : ConnectionBase(side_, remote_ip_, remote_port_, local_ip_, local_port_), sock(sock_) {}
+  static ConnectionPtr create(Side side, int sock) { return ConnectionPtr(new Connection(side, sock)); }
+
+  void establish() {
+    sockaddr_in addr_in = {};
+    socklen_t addr_in_len = sizeof(addr_in);
+    if (auto ec = ::getsockname(sock, reinterpret_cast<sockaddr *>(&addr_in), &addr_in_len); ec < 0) {
+      die("Fail to get local addr, errno: {}", errno);
+    }
+    local_ip = inet_ntoa(addr_in.sin_addr);
+    local_port = ntohs(addr_in.sin_port);
+    if (auto ec = ::getpeername(sock, reinterpret_cast<sockaddr *>(&addr_in), &addr_in_len); ec < 0) {
+      die("Fail to get remote addr, errno: {}", errno);
+    }
+    remote_ip = inet_ntoa(addr_in.sin_addr);
+    local_port = ntohs(addr_in.sin_port);
+  }
+
+  Connection(Side side_, int sock_) : ConnectionBase(side_), sock(sock_) {}
 
   int sock = -1;
 };
 
-class Endpoint : EndpointBase {
+class Endpoint : public EndpointBase {
   friend class Acceptor;
   friend class Connector;
 
@@ -134,7 +147,7 @@ class Endpoint : EndpointBase {
   void post_write(Buffer &in, size_t nbytes) {
     assert(nbytes <= in.size());
     auto w_sqe = io_uring_get_sqe(&ring);
-    io_uring_prep_write_fixed(w_sqe, conn->socket(), in.data(), nbytes, 0, in.index());
+    io_uring_prep_write_fixed(w_sqe, conn->sock, in.data(), nbytes, 0, in.index());
     if (auto ec = io_uring_submit(&ring); ec < 0) {
       die("Fail to submit write sqe, errno: {}", -ec);
     }
@@ -143,7 +156,7 @@ class Endpoint : EndpointBase {
   void post_read(Buffer &out, size_t nbytes) {
     assert(nbytes);
     auto r_sqe = io_uring_get_sqe(&ring);
-    io_uring_prep_read_fixed(r_sqe, conn->socket(), out.data(), nbytes, 0, out.index());
+    io_uring_prep_read_fixed(r_sqe, conn->sock, out.data(), nbytes, 0, out.index());
     if (auto ec = io_uring_submit(&ring); ec < 0) {
       die("Fail to submit read sqe, errno: {}", -ec);
     }
@@ -201,9 +214,12 @@ class Endpoint : EndpointBase {
     return buffers[active_buffer_idx];
   }
 
-  void establish(ConnectionPtr &&c) { conn = std::move(c); }
+  void establish(ConnectionPtr conn_) {
+    conn = std::move(conn_);
+    conn->establish();
+  }
 
-  ConnectionPtr conn;
+  ConnectionPtr conn = nullptr;
   io_uring ring;
   Buffers buffers;
   uint32_t active_buffer_idx = 0;
@@ -249,13 +265,10 @@ class ConnectionHandle : Noncopyable {
   Side side;
 };
 
-class Acceptor : ConnectionHandle {
+class Acceptor : public ConnectionHandle {
  public:
-  Acceptor(std::string local_ip_, uint16_t local_port_)
-      : ConnectionHandle(Side::ServerSide),
-        local_ip(std::move(local_ip_)),
-        local_port(local_port_),
-        sock(setup_and_bind(local_ip, local_port)) {}
+  Acceptor(std::string local_ip, uint16_t local_port)
+      : ConnectionHandle(Side::ServerSide), sock(setup_and_bind(local_ip, local_port)) {}
   ~Acceptor() {
     if (sock != -1) {
       if (auto ec = ::close(sock); ec < 0) {
@@ -264,11 +277,14 @@ class Acceptor : ConnectionHandle {
     }
   };
 
-  void associate(EndpointRefs &&endpoints_) { endpoints = endpoints_; }
+  Acceptor &associate(EndpointRefs &&endpoints_) {
+    endpoints = endpoints_;
+    return *this;
+  }
 
   void listen_and_accept() {
     if (auto ec = ::listen(sock, 10); ec < 0) {
-      die("Fail to listen {}:{}, errno: {}", local_ip, local_port, errno);
+      die("Fail to listen, errno: {}", errno);
     }
     for (auto &endpoint : endpoints) {
       sockaddr_in client_addr_in = {};
@@ -277,57 +293,39 @@ class Acceptor : ConnectionHandle {
       if (client_sock < 0) {
         die("Fail to accept connection, errno: {}", errno);
       }
-      std::string client_ip = inet_ntoa(client_addr_in.sin_addr);
-      uint16_t client_port = ntohs(client_addr_in.sin_port);
-      INFO("accept client {}:{}", client_ip, client_port);
-      endpoint.get().establish(
-          ConnectionPtr(new Connection(side, client_sock, client_ip, client_port, local_ip, local_port)));
+      endpoint.get().establish(Connection::create(side, client_sock));
     }
   }
 
  private:
   EndpointRefs endpoints;
-  std::string local_ip = "";
-  uint16_t local_port = -1;
   int sock = -1;  // listening sock
 };
 
-class Connector : ConnectionHandle {
+class Connector : public ConnectionHandle {
  public:
-  Connector(std::string remote_ip_, uint16_t remote_port_)
-      : ConnectionHandle(Side::ClientSide), remote_ip(std::move(remote_ip_)), remote_port(remote_port_) {}
+  Connector(std::string remote_ip, uint16_t remote_port)
+      : ConnectionHandle(Side::ClientSide),
+        remote_addr_in({
+            .sin_family = AF_INET,
+            .sin_port = htons(remote_port),
+            .sin_addr = {.s_addr = inet_addr(remote_ip.data())},
+            .sin_zero = {},
+        }) {}
 
   ~Connector() = default;
 
   void connect(Endpoint &e, std::string local_ip = "", uint16_t local_port = 0 /* 0 for INPORT_ANY */) {
     auto sock = setup_and_bind(local_ip, local_port);
-    auto remote_ip_in = inet_addr(remote_ip.c_str());
-    if (remote_ip_in == INADDR_NONE) {
-      die("Wrong format remote ip {}", remote_ip);
+    if (auto ec = ::connect(sock, reinterpret_cast<sockaddr *>(&remote_addr_in), sizeof(remote_addr_in)); ec < 0) {
+      die("Fail to connect with remote server {}, errno: {}", inet_ntoa(remote_addr_in.sin_addr),
+          ntohs(remote_addr_in.sin_port), errno);
     }
-    auto addr_in = sockaddr_in{
-        .sin_family = AF_INET,
-        .sin_port = htons(remote_port),
-        .sin_addr = {.s_addr = remote_ip_in},
-        .sin_zero = {},
-    };
-    INFO("connect to {}:{} sock {}", remote_ip, remote_port, sock);
-    if (auto ec = ::connect(sock, reinterpret_cast<sockaddr *>(&addr_in), sizeof(addr_in)); ec < 0) {
-      die("Fail to connect with remote server {}:{}, errno: {}", remote_ip, remote_port, errno);
-    }
-    if (local_port == 0) {
-      socklen_t addr_in_len = sizeof(addr_in);
-      if (auto ec = ::getsockname(sock, reinterpret_cast<sockaddr *>(&addr_in), &addr_in_len); ec < 0) {
-        die("Fail to get socket name, errno: {}", errno);
-      }
-      local_port = ntohs(addr_in.sin_port);
-    }
-    e.establish(ConnectionPtr(new Connection(side, sock, remote_ip, remote_port, local_ip, local_port)));
+    e.establish(Connection::create(side, sock));
   }
 
  private:
-  std::string remote_ip = "";
-  uint16_t remote_port = -1;
+  sockaddr_in remote_addr_in = {};
 };
 
 struct PayloadType {
