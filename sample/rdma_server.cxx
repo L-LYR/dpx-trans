@@ -1,10 +1,10 @@
 #include <args.hxx>
 #include <glaze/glaze.hpp>
 
-#include "tcp_common.hxx"
+#include "rdma_common.hxx"
 
 int main(int args, char* argv[]) {
-  args::ArgumentParser p("Sample tcp server");
+  args::ArgumentParser p("Sample rdma server");
   args::HelpFlag help(p, "help", "Display this help menu", {'h', "help"});
   args::ValueFlag<std::string> local_ip(p, "local ip", "local ip", {"local_ip"}, args::Options::Required);
   args::ValueFlag<uint16_t> local_port(p, "local port", "local port", {"local_port"}, args::Options::Required);
@@ -22,11 +22,10 @@ int main(int args, char* argv[]) {
     return -1;
   }
 
-  Endpoint e1(1, 128);
-  Endpoint e2(1, 128);
+  Endpoint e1(10, 128);
+  Endpoint e2(10, 128);
   Acceptor a(args::get(local_ip), args::get(local_port));
   a.associate({e1, e2}).listen_and_accept();
-
   auto echo = [](Endpoint& e) {
     e.serve<EchoRpc>([](PayloadType&& req) -> PayloadType {
       INFO("{}", glz::write_json<>(req).value_or("Corrupted Payload!"));

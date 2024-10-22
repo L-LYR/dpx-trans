@@ -18,3 +18,18 @@ executable(
     dependencies: dependencies + args_dep,
     include_directories: include_directories,
 )
+
+executable(
+    'rdma_server',
+    files('rdma_server.cxx'),
+    dependencies: dependencies + args_dep,
+    include_directories: include_directories,
+)
+
+executable(
+    'rdma_client',
+    files('rdma_client.cxx'),
+    dependencies: dependencies + args_dep,
+    include_directories: include_directories,
+)
+
