@@ -20,10 +20,10 @@
 #include "util/logger.hxx"
 #include "util/noncopyable.hxx"
 
-using Buffers = std::vector<Buffer>;
-
 class Connection;
 using ConnectionPtr = std::unique_ptr<Connection>;
+
+class Endpoint;
 
 class Connection : public ConnectionBase {
   friend class Acceptor;
@@ -41,9 +41,9 @@ class Connection : public ConnectionBase {
   }
 
  private:
-  static ConnectionPtr create(Side side, int sock) { return ConnectionPtr(new Connection(side, sock)); }
+  static ConnectionPtr establish(Side side, int sock, Endpoint &) { return ConnectionPtr(new Connection(side, sock)); }
 
-  void establish() {
+  Connection(Side side_, int sock_) : ConnectionBase(side_), sock(sock_) {
     sockaddr_in addr_in = {};
     socklen_t addr_in_len = sizeof(addr_in);
     if (auto ec = ::getsockname(sock, reinterpret_cast<sockaddr *>(&addr_in), &addr_in_len); ec < 0) {
@@ -57,8 +57,6 @@ class Connection : public ConnectionBase {
     remote_ip = inet_ntoa(addr_in.sin_addr);
     local_port = ntohs(addr_in.sin_port);
   }
-
-  Connection(Side side_, int sock_) : ConnectionBase(side_), sock(sock_) {}
 
   int sock = -1;
 };
@@ -214,11 +212,6 @@ class Endpoint : public EndpointBase {
     return buffers[active_buffer_idx];
   }
 
-  void establish(ConnectionPtr conn_) {
-    conn = std::move(conn_);
-    conn->establish();
-  }
-
   ConnectionPtr conn = nullptr;
   io_uring ring;
   Buffers buffers;
@@ -293,7 +286,7 @@ class Acceptor : public ConnectionHandle {
       if (client_sock < 0) {
         die("Fail to accept connection, errno: {}", errno);
       }
-      endpoint.get().establish(Connection::create(side, client_sock));
+      endpoint.get().conn = Connection::establish(side, client_sock, endpoint);
     }
   }
 
@@ -321,7 +314,7 @@ class Connector : public ConnectionHandle {
       die("Fail to connect with remote server {}, errno: {}", inet_ntoa(remote_addr_in.sin_addr),
           ntohs(remote_addr_in.sin_port), errno);
     }
-    e.establish(Connection::create(side, sock));
+    e.conn = Connection::establish(side, sock, e);
   }
 
  private:

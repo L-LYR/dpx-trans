@@ -22,8 +22,8 @@ int main(int args, char* argv[]) {
     return -1;
   }
 
-  Endpoint e1(Buffers(10));
-  Endpoint e2(Buffers(10));
+  Endpoint e1(Buffers(10, 128));
+  Endpoint e2(Buffers(10, 128));
   Acceptor a(args::get(local_ip), args::get(local_port));
   a.associate({e1, e2}).listen_and_accept();
 
