@@ -25,10 +25,15 @@ int main(int args, char* argv[]) {
     return -1;
   }
   Connector c(args::get(remote_ip), args::get(remote_port));
-  Endpoint e1(Buffers(10, 1024));
-  Endpoint e2(Buffers(10, 1024));
+  Endpoint e1(10, 128);
+  Endpoint e2(10, 128);
   c.connect(e1, args::get(local_ip), 10087);
   c.connect(e2, args::get(local_ip), 10088);
-
+  auto fn = [](Endpoint& e, uint32_t i) {
+    auto resp = e.call<EchoRpc>(PayloadType{.id = i, .message = "Hello"});
+    INFO("{}", glz::write_json<>(resp).value_or("Corrupted Payload!"));
+  };
+  std::jthread t1(fn, std::ref(e1), 1);
+  std::jthread t2(fn, std::ref(e2), 2);
   return 0;
 }

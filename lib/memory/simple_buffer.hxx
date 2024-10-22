@@ -76,6 +76,7 @@ class Buffers : public std::vector<Buffer>, Noncopyable {
     uint8_t *p = base;
     for (auto i = 0uz; i < n; ++i) {
       this->emplace_back(p, piece_len, i);
+      p += piece_len;
     }
   }
 

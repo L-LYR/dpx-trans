@@ -25,8 +25,8 @@ int main(int args, char* argv[]) {
     return -1;
   }
   Connector c(args::get(remote_ip), args::get(remote_port));
-  Endpoint e1(Buffers(10, 128));
-  Endpoint e2(Buffers(10, 128));
+  Endpoint e1(1, 128);
+  Endpoint e2(1, 128);
   c.connect(e1, args::get(local_ip), 10087);
   c.connect(e2, args::get(local_ip), 10088);
   auto fn = [](Endpoint& e, uint32_t i) {

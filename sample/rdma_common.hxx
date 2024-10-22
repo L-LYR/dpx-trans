@@ -3,10 +3,14 @@
 #include <arpa/inet.h>
 #include <rdma/rdma_cma.h>
 #include <spdlog/spdlog.h>
+#include <zpp_bits.h>
+
+#include <iostream>
 
 #include "common.hxx"
 #include "memory/simple_buffer.hxx"
 #include "util/fatal.hxx"
+#include "util/hex_dump.hxx"
 #include "util/logger.hxx"
 
 class Connection;
@@ -135,9 +139,9 @@ class PD : Noncopyable, Nonmovable {
     }
   }
 
-  MR register_memory(void* buffer, uint32_t length,
-                     int access_flags = IBV_ACCESS_REMOTE_WRITE | IBV_ACCESS_LOCAL_WRITE | IBV_ACCESS_REMOTE_READ) {
-    auto mr = ibv_reg_mr(pd, buffer, length, access_flags);
+  MR register_memory(void* base, uint32_t length,
+                     int access_flags = IBV_ACCESS_LOCAL_WRITE | IBV_ACCESS_REMOTE_READ | IBV_ACCESS_REMOTE_WRITE) {
+    auto mr = ibv_reg_mr(pd, base, length, access_flags);
     if (mr == nullptr) {
       die("Fail to register memory region, errno {}", errno);
     }
@@ -162,18 +166,18 @@ class CQ : Noncopyable, Nonmovable {
   }
 
   void setup(ibv_context* ctx, uint32_t n_cqe) {
-    if (cq = ibv_create_cq(ctx, n_cqe, this, nullptr, 0); cq == nullptr) [[unlikely]] {
+    if (cq = ibv_create_cq(ctx, n_cqe, this, nullptr, 0); cq == nullptr) {
       die("Fail to create cq, errno {}", errno);
     }
   }
 
-  auto poll() -> std::optional<ibv_wc> {
+  std::optional<ibv_wc> poll() {
     ibv_wc wc = {};
     auto ec = ibv_poll_cq(cq, 1, &wc);
-    if (ec < 0) [[unlikely]] {
+    if (ec < 0) {
       die("Fail to poll cq, errno {}", errno);
     }
-    return ((ec == 1) ? std::nullopt : std::optional<ibv_wc>{wc});
+    return ((ec == 1) ? std::optional<ibv_wc>{wc} : std::nullopt);
   }
 
  private:
@@ -181,6 +185,8 @@ class CQ : Noncopyable, Nonmovable {
 };
 
 class QP : Noncopyable, Nonmovable {
+  friend class Endpoint;
+
  public:
   QP() = default;
   ~QP() {
@@ -207,6 +213,48 @@ class QP : Noncopyable, Nonmovable {
       die("Fail to create qp, errno {}", errno);
     }
     qp = id->qp;
+  }
+
+  void post_recv(Buffer& buffer, uint32_t lkey) {
+    ibv_sge sge = {
+        .addr = reinterpret_cast<uint64_t>(buffer.data()),
+        .length = static_cast<uint32_t>(buffer.size()),
+        .lkey = lkey,
+    };
+    ibv_recv_wr wr = {
+        .wr_id = buffer.index(),
+        .next = nullptr,
+        .sg_list = &sge,
+        .num_sge = 1,
+    };
+    ibv_recv_wr* bad_wr = nullptr;
+    if (auto ec = ibv_post_recv(qp, &wr, &bad_wr); ec < 0) {
+      die("Fail to post recv, errno {}", errno);
+    }
+  }
+
+  void post_send(Buffer& buffer, uint32_t len, uint32_t lkey) {
+    ibv_sge sge = {
+        .addr = reinterpret_cast<uint64_t>(buffer.data()),
+        .length = len,
+        .lkey = lkey,
+    };
+    ibv_send_wr wr = {
+        .wr_id = buffer.index(),
+        .next = nullptr,
+        .sg_list = &sge,
+        .num_sge = 1,
+        .opcode = IBV_WR_SEND,
+        .send_flags = IBV_SEND_SIGNALED,
+        {},
+        {},
+        {},
+        {},
+    };
+    ibv_send_wr* bad_wr = nullptr;
+    if (auto ec = ibv_post_send(qp, &wr, &bad_wr); ec < 0) {
+      die("Fail to post send, errno {}", errno);
+    }
   }
 
  private:
@@ -260,20 +308,108 @@ class Endpoint : public EndpointBase {
   friend class Connection;
 
  public:
-  Endpoint(Buffers&& buffers_) : buffers(std::move(buffers_)) {}
+  Endpoint(size_t n_qe, size_t max_payload_size)
+      : send_buffers(n_qe, max_payload_size), recv_buffers(n_qe, max_payload_size) {}
   ~Endpoint() = default;
+
+  template <typename Rpc>
+  using req_t = typename Rpc::Request;
+
+  template <typename Rpc>
+  using resp_t = typename Rpc::Response;
+
+  template <typename Rpc>
+  using handler_t = typename Rpc::Handler;
+
+  template <typename Rpc>
+  resp_t<Rpc> call(req_t<Rpc>&& req) {
+    auto& in = get_send_buffer();
+    auto serializer = zpp::bits::out(in);
+    serializer(req).or_throw();
+    std::cout << std::endl << Hexdump(in.data(), serializer.position()) << std::endl;
+    INFO("Write {} bytes", serializer.position());
+
+    qp.post_send(in, serializer.position(), local_send_mr.lkey());
+    while (true) {
+      if (auto o = cq.poll(); o.has_value()) {
+        assert(o->status == IBV_WC_SUCCESS);
+        assert(o->opcode == IBV_WC_SEND);
+        assert(o->wr_id == in.index());
+        break;
+      }
+    }
+
+    auto& out = get_recv_buffer();
+    qp.post_recv(out, local_recv_mr.lkey());
+    while (true) {
+      if (auto o = cq.poll(); o.has_value()) {
+        assert(o->status == IBV_WC_SUCCESS);
+        assert(o->opcode == IBV_WC_RECV);
+        assert(o->wr_id == out.index());
+        break;
+      }
+    }
+
+    auto resp = resp_t<Rpc>{};
+    auto deserializer = zpp::bits::in(out);
+    deserializer(resp).or_throw();
+    std::cout << std::endl << Hexdump(out.data(), deserializer.position()) << std::endl;
+    INFO("Read {} bytes", deserializer.position());
+
+    return resp;
+  }
+
+  template <typename Rpc>
+  void serve(handler_t<Rpc>&& fn) {
+    auto& out = get_recv_buffer();
+    qp.post_recv(out, local_recv_mr.lkey());
+
+    while (true) {
+      if (auto o = cq.poll(); o.has_value()) {
+        assert(o->status == IBV_WC_SUCCESS);
+        assert(o->opcode == IBV_WC_RECV);
+        assert(o->wr_id == out.index());
+        break;
+      }
+    }
+
+    auto req = req_t<Rpc>{};
+    auto deserializer = zpp::bits::in(out);
+    deserializer(req).or_throw();
+    std::cout << std::endl << Hexdump(out.data(), deserializer.position()) << std::endl;
+    INFO("Read {} bytes", deserializer.position());
+
+    auto resp = fn(std::move(req));
+
+    auto& in = get_send_buffer();
+    auto serializer = zpp::bits::out(in);
+    serializer(resp).or_throw();
+
+    std::cout << std::endl << Hexdump(in.data(), serializer.position()) << std::endl;
+    INFO("Write {} bytes", serializer.position());
+
+    qp.post_send(in, serializer.position(), local_send_mr.lkey());
+    while (true) {
+      if (auto o = cq.poll(); o.has_value()) {
+        assert(o->status == IBV_WC_SUCCESS);
+        assert(o->opcode == IBV_WC_SEND);
+        assert(o->wr_id == in.index());
+        break;
+      }
+    }
+  }
 
  private:
   void setup_remote_param(const rdma_conn_param& remote_) {
     remote = remote_;
     if (remote_.private_data != nullptr) {
       remote.private_data = nullptr;  // do not own, just copy out
-      remote_mr_h = *reinterpret_cast<const MRHandle*>(remote_.private_data);
+      // remote_mr_h = *reinterpret_cast<const MRHandle*>(remote_.private_data);
     }
   }
 
   void setup_resources(rdma_cm_id* id) {
-    uint32_t n_wr = buffers.size();
+    uint32_t n_wr = send_buffers.size();
     pd.setup(id->verbs);
     cq.setup(id->verbs, n_wr * 2);
     qp.setup(id, pd, cq,
@@ -284,8 +420,9 @@ class Endpoint : public EndpointBase {
                  .max_recv_sge = 1,
                  .max_inline_data = 0,
              });
-    local_mr = pd.register_memory(buffers.base_address(), buffers.length());
-    local_mr_h = local_mr;
+    local_send_mr = pd.register_memory(send_buffers.base_address(), send_buffers.length());
+    local_recv_mr = pd.register_memory(recv_buffers.base_address(), recv_buffers.length());
+    // local_mr_h = local_mr;
     // setup connection params
     ibv_query_device_ex_input query = {};
     if (auto ec = ibv_query_device_ex(id->verbs, &query, &device_attr_ex); ec < 0) {
@@ -294,23 +431,41 @@ class Endpoint : public EndpointBase {
     local.initiator_depth = device_attr_ex.orig_attr.max_qp_init_rd_atom;
     local.responder_resources = device_attr_ex.orig_attr.max_qp_rd_atom;
     local.rnr_retry_count = 7;
-    local.private_data = &local_mr_h;
-    local.private_data_len = sizeof(local_mr_h);
+    // local.private_data = &local_mr_h;
+    // local.private_data_len = sizeof(local_mr_h);
   }
 
-  Buffers buffers;
+  // TODO better one
+  Buffer& get_send_buffer() {
+    active_send_buffer_idx = (active_send_buffer_idx + 1) % send_buffers.size();
+    send_buffers[active_send_buffer_idx].clear();
+    return send_buffers[active_send_buffer_idx];
+  }
+
+  Buffer& get_recv_buffer() {
+    active_recv_buffer_idx = (active_recv_buffer_idx + 1) % recv_buffers.size();
+    recv_buffers[active_recv_buffer_idx].clear();
+    return recv_buffers[active_recv_buffer_idx];
+  }
+
+  Buffers send_buffers;
+  Buffers recv_buffers;
 
   CQ cq;
   PD pd;
   QP qp;
-  PD::MR local_mr;
-  MRHandle local_mr_h = {};
-  MRHandle remote_mr_h = {};
+  PD::MR local_send_mr;
+  PD::MR local_recv_mr;
+  // MRHandle local_mr_h = {};
+  // MRHandle remote_mr_h = {};
 
   ConnectionPtr conn = nullptr;
   rdma_conn_param local = {};
   rdma_conn_param remote = {};
   ibv_device_attr_ex device_attr_ex = {};
+
+  uint32_t active_send_buffer_idx = 0;
+  uint32_t active_recv_buffer_idx = 0;
 };
 
 inline ConnectionPtr Connection::establish(Side side, rdma_cm_id* id, Endpoint& endpoint) {
@@ -332,9 +487,10 @@ inline ConnectionPtr Connection::establish(Side side, rdma_cm_id* id, Endpoint& 
       c.wait_and_ack(RDMA_CM_EVENT_ESTABLISHED);
     } break;
   }
-  INFO("local 0x{:0X} {} {}", endpoint.local_mr_h.address(), endpoint.local_mr_h.length(), endpoint.local_mr_h.rkey());
-  INFO("remote 0x{:0X} {} {}", endpoint.remote_mr_h.address(), endpoint.remote_mr_h.length(),
-       endpoint.remote_mr_h.rkey());
+  // INFO("local 0x{:0X} {} {}", endpoint.local_mr_h.address(), endpoint.local_mr_h.length(),
+  // endpoint.local_mr_h.rkey()); INFO("remote 0x{:0X} {} {}", endpoint.remote_mr_h.address(),
+  // endpoint.remote_mr_h.length(),
+  //      endpoint.remote_mr_h.rkey());
 
   return ConnectionPtr(new Connection(side, id));
 }
@@ -434,4 +590,15 @@ class Connector : public ConnectionHandle {
 
  private:
   sockaddr_in remote_addr_in = {};
+};
+
+struct PayloadType {
+  uint32_t id;
+  std::string message;
+};
+
+struct EchoRpc {
+  using Request = PayloadType;
+  using Response = PayloadType;
+  using Handler = std::function<Response(Request)>;
 };

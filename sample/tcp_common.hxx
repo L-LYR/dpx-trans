@@ -66,17 +66,18 @@ class Endpoint : public EndpointBase {
   friend class Connector;
 
  public:
-  Endpoint(Buffers &&buffers_) : buffers(std::move(buffers_)) {
+  Endpoint(size_t n_qe, size_t max_payload_size)
+      : send_buffers(n_qe, max_payload_size), recv_buffers(n_qe, max_payload_size) {
     if (auto ec = io_uring_queue_init(16, &ring, 0); ec < 0) {
       die("Fail to init ring, errno: {}", -ec);
     }
-    auto iovecs = std::vector<iovec>(buffers.size());
-    for (auto i = 0uz; i < buffers.size(); ++i) {
-      iovecs[i].iov_base = buffers[i].data();
-      iovecs[i].iov_len = buffers[i].size();
-      buffers[i].set_index(i);
+    auto iovecs = std::vector<iovec>(send_buffers.size());
+    for (auto i = 0uz; i < send_buffers.size(); ++i) {
+      iovecs[i].iov_base = send_buffers[i].data();
+      iovecs[i].iov_len = send_buffers[i].size();
+      send_buffers[i].set_index(i);
     }
-    if (auto ec = io_uring_register_buffers(&ring, iovecs.data(), buffers.size()); ec < 0) {
+    if (auto ec = io_uring_register_buffers(&ring, iovecs.data(), send_buffers.size()); ec < 0) {
       die("Fail to register buffers, errno: {}", -ec);
     }
   }
@@ -162,7 +163,7 @@ class Endpoint : public EndpointBase {
 
   template <typename Payload>
   void write(Payload &&payload) {
-    auto &in = get_buffer();
+    auto &in = get_send_buffer();
     auto serializer = zpp::bits::out(in);
     serializer(payload).or_throw();
     std::cout << std::endl << Hexdump(in.data(), serializer.position()) << std::endl;
@@ -177,7 +178,7 @@ class Endpoint : public EndpointBase {
 
   template <typename Payload>
   Payload read() {
-    auto &out = get_buffer();
+    auto &out = get_recv_buffer();
     post_read(out, out.size());
     auto resp = Payload{};
     wait_and_then([&resp, &out](int n) {
@@ -199,23 +200,39 @@ class Endpoint : public EndpointBase {
   using resp_t = typename Rpc::Response;
 
   template <typename Rpc>
+  using handler_t = typename Rpc::Handler;
+
+  template <typename Rpc>
   resp_t<Rpc> call(req_t<Rpc> &&r) {
     write(std::forward<req_t<Rpc>>(r));
     return read<resp_t<Rpc>>();
   }
 
+  template <typename Rpc>
+  void serve(handler_t<Rpc> &&fn) {
+    write(fn(read<resp_t<Rpc>>()));
+  }
+
  private:
   // TODO better one
-  Buffer &get_buffer() {
-    active_buffer_idx = (active_buffer_idx + 1) % buffers.size();
-    buffers[active_buffer_idx].clear();
-    return buffers[active_buffer_idx];
+  Buffer &get_send_buffer() {
+    active_send_buffer_idx = (active_send_buffer_idx + 1) % send_buffers.size();
+    send_buffers[active_send_buffer_idx].clear();
+    return send_buffers[active_send_buffer_idx];
+  }
+
+  Buffer &get_recv_buffer() {
+    active_recv_buffer_idx = (active_recv_buffer_idx + 1) % send_buffers.size();
+    send_buffers[active_recv_buffer_idx].clear();
+    return send_buffers[active_recv_buffer_idx];
   }
 
   ConnectionPtr conn = nullptr;
   io_uring ring;
-  Buffers buffers;
-  uint32_t active_buffer_idx = 0;
+  Buffers send_buffers;
+  Buffers recv_buffers;
+  uint32_t active_send_buffer_idx = 0;
+  uint32_t active_recv_buffer_idx = 0;
 };
 
 using EndpointRef = std::reference_wrapper<Endpoint>;
@@ -329,4 +346,5 @@ struct PayloadType {
 struct EchoRpc {
   using Request = PayloadType;
   using Response = PayloadType;
+  using Handler = std::function<Response(Request)>;
 };
