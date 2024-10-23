@@ -7,8 +7,8 @@
 
 #include <iostream>
 
-#include "common.hxx"
 #include "memory/simple_buffer.hxx"
+#include "priv/common.hxx"
 #include "util/fatal.hxx"
 #include "util/hex_dump.hxx"
 #include "util/logger.hxx"
@@ -313,15 +313,6 @@ class Endpoint : public EndpointBase {
   ~Endpoint() = default;
 
   template <typename Rpc>
-  using req_t = typename Rpc::Request;
-
-  template <typename Rpc>
-  using resp_t = typename Rpc::Response;
-
-  template <typename Rpc>
-  using handler_t = typename Rpc::Handler;
-
-  template <typename Rpc>
   resp_t<Rpc> call(req_t<Rpc>&& req) {
     auto& in = get_send_buffer();
     auto serializer = zpp::bits::out(in);
@@ -590,15 +581,4 @@ class Connector : public ConnectionHandle {
 
  private:
   sockaddr_in remote_addr_in = {};
-};
-
-struct PayloadType {
-  uint32_t id;
-  std::string message;
-};
-
-struct EchoRpc {
-  using Request = PayloadType;
-  using Response = PayloadType;
-  using Handler = std::function<Response(Request)>;
 };

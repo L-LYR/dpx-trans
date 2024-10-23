@@ -1,5 +1,6 @@
 #pragma once
 
+#include <bits/types/struct_iovec.h>
 #include <zpp_bits.h>
 
 #include <cassert>
@@ -46,7 +47,6 @@ class Buffer : Noncopyable {
   void clear() { memset(buf, 0, len); }
 
   size_t index() const { return idx; }
-  void set_index(size_t idx_) { idx = idx_; }
 
   operator std::span<uint8_t>() { return std::span<uint8_t>(buf, len); }
   operator std::span<const uint8_t>() const { return std::span<uint8_t>(buf, len); }
@@ -70,6 +70,7 @@ class Buffer : Noncopyable {
 
 class Buffers : public std::vector<Buffer>, Noncopyable {
   using Base = std::vector<Buffer>;
+  using IOVecs = std::vector<iovec>;
 
  public:
   Buffers(size_t n, size_t piece_len_) : len(piece_len_ * n), piece_len(piece_len_), base(new uint8_t[len]) {
@@ -97,6 +98,15 @@ class Buffers : public std::vector<Buffer>, Noncopyable {
       piece_len = std::exchange(other.piece_len, -1);
     }
     return *this;
+  }
+
+  operator IOVecs() {
+    IOVecs iovecs;
+    iovecs.reserve(size());
+    for (auto &buffer : *this) {
+      iovecs.emplace_back(buffer.data(), buffer.size());
+    }
+    return iovecs;
   }
 
  public:

@@ -36,7 +36,7 @@ class EndpointBase : Noncopyable, Nonmovable {
 
 class ConnectionBase : Noncopyable, Nonmovable {
  public:
-  ~ConnectionBase() {}
+  ~ConnectionBase() = default;
 
  protected:
   ConnectionBase(Side side_) : side(side_) {}
@@ -47,3 +47,24 @@ class ConnectionBase : Noncopyable, Nonmovable {
   uint16_t remote_port = -1;
   uint16_t local_port = -1;
 };
+
+class ConnectionHandleBase : Noncopyable, Nonmovable {
+ public:
+  ~ConnectionHandleBase() = default;
+
+ protected:
+  ConnectionHandleBase(Side side_) : side(side_) {}
+
+  Side side;
+};
+
+#ifdef USE_TCP
+
+#include "priv/tcp/connection.hxx"
+#include "priv/tcp/endpoint.hxx"
+
+using Endpoint = tcp::Endpoint;
+using Acceptor = tcp::Acceptor;
+using Connector = tcp::Connector;
+
+#endif

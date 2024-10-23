@@ -1,6 +1,7 @@
 #include <args.hxx>
 #include <glaze/glaze.hpp>
 
+#include "echo.hxx"
 #include "rdma_common.hxx"
 
 int main(int args, char* argv[]) {
