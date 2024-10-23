@@ -7,6 +7,7 @@
 
 #include <iostream>
 
+#include "concept/rpc.hxx"
 #include "memory/simple_buffer.hxx"
 #include "priv/common.hxx"
 #include "util/fatal.hxx"

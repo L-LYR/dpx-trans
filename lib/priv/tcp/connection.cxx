@@ -31,8 +31,9 @@ Connection::Connection(Side side_, int sock_) : ConnectionBase(side_), sock(sock
   local_port = ntohs(addr_in.sin_port);
 }
 
-ConnectionPtr Connection::establish(Side side, int sock, Endpoint & /* e */) {
-  return ConnectionPtr(new Connection(side, sock));
+void Connection::establish(Side side, int sock, Endpoint &e) {
+  e.conn = ConnectionPtr(new Connection(side, sock));
+  e.run();
 }
 
 namespace {
@@ -89,7 +90,7 @@ void Acceptor::listen_and_accept() {
     if (client_sock < 0) {
       die("Fail to accept connection, errno: {}", errno);
     }
-    endpoint.get().conn = Connection::establish(side, client_sock, endpoint);
+    Connection::establish(side, client_sock, endpoint);
   }
 }
 
@@ -113,7 +114,7 @@ void Connector::connect(Endpoint &e, std::string local_ip, uint16_t local_port) 
     die("Fail to connect with remote server {}, errno: {}", inet_ntoa(remote_addr_in.sin_addr),
         ntohs(remote_addr_in.sin_port), errno);
   }
-  e.conn = Connection::establish(side, sock, e);
+  Connection::establish(side, sock, e);
 }
 
 }  // namespace tcp

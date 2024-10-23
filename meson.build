@@ -38,6 +38,7 @@ glaze_opt.add_cmake_defines(
 
 basic_deps = [
     dependency('threads', required: true),
+    dependency('boost', modules: ['fiber', 'context'], required: true),
     subproject('dbg-macro').get_variable('dbg_macro_dep'),
     subproject('zpp_bits').get_variable('zpp_bits_dep'),
     subproject(

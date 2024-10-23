@@ -2,6 +2,7 @@
 #include <glaze/glaze.hpp>
 
 #include "echo.hxx"
+#include "util/logger.hxx"
 #define USE_TCP
 #include "priv/common.hxx"
 #undef USE_TCP
@@ -32,10 +33,22 @@ int main(int args, char* argv[]) {
   Endpoint e2(2, 128);
   c.connect(e1, args::get(local_ip), 10087);
   c.connect(e2, args::get(local_ip), 10088);
+
   auto fn = [](Endpoint& e, uint32_t i) {
+    auto poller = boost::fibers::fiber([&e]() {
+      while (e.running()) {
+        if (auto n = e.poll(1); n == 0) {
+          boost::this_fiber::sleep_for(100ns);
+        }
+      }
+    });
     auto resp = e.call<EchoRpc>(PayloadType{.id = i, .message = "Hello"});
     INFO("{}", glz::write_json<>(resp).value_or("Corrupted Payload!"));
+    std::this_thread::sleep_for(1s);
+    e.stop();
+    poller.join();
   };
+
   std::jthread t1(fn, std::ref(e1), 1);
   std::jthread t2(fn, std::ref(e2), 2);
   return 0;

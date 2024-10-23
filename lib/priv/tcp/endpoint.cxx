@@ -4,7 +4,7 @@
 
 namespace tcp {
 
-Endpoint::Endpoint(size_t n_qe, size_t max_payload_size) : buffers(n_qe, max_payload_size) {
+Endpoint::Endpoint(size_t n_qe, size_t max_payload_size) : buffers(n_qe, max_payload_size), result_ps(n_qe) {
   assert(n_qe != 0 && n_qe % 2 == 0);
   if (auto ec = io_uring_queue_init(n_qe, &ring, 0); ec < 0) {
     die("Fail to init ring, errno: {}", -ec);
