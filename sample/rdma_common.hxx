@@ -13,13 +13,6 @@
 #include "util/hex_dump.hxx"
 #include "util/logger.hxx"
 
-class Connection;
-using ConnectionPtr = std::unique_ptr<Connection>;
-
-class Endpoint;
-using EndpointRef = std::reference_wrapper<Endpoint>;
-using EndpointRefs = std::vector<EndpointRef>;
-
 class EventChannel : Noncopyable, Nonmovable {
   friend class Connection;
   friend class ConnectionHandle;
@@ -313,15 +306,6 @@ class Endpoint : public EndpointBase {
   ~Endpoint() = default;
 
   template <typename Rpc>
-  using req_t = typename Rpc::Request;
-
-  template <typename Rpc>
-  using resp_t = typename Rpc::Response;
-
-  template <typename Rpc>
-  using handler_t = typename Rpc::Handler;
-
-  template <typename Rpc>
   resp_t<Rpc> call(req_t<Rpc>&& req) {
     auto& in = get_send_buffer();
     auto serializer = zpp::bits::out(in);
@@ -590,15 +574,4 @@ class Connector : public ConnectionHandle {
 
  private:
   sockaddr_in remote_addr_in = {};
-};
-
-struct PayloadType {
-  uint32_t id;
-  std::string message;
-};
-
-struct EchoRpc {
-  using Request = PayloadType;
-  using Response = PayloadType;
-  using Handler = std::function<Response(Request)>;
 };

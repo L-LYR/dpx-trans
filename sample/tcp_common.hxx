@@ -8,7 +8,6 @@
 
 #include <cassert>
 #include <cstdint>
-#include <functional>
 #include <iostream>
 #include <string>
 #include <vector>
@@ -19,11 +18,6 @@
 #include "util/hex_dump.hxx"
 #include "util/logger.hxx"
 #include "util/noncopyable.hxx"
-
-class Connection;
-using ConnectionPtr = std::unique_ptr<Connection>;
-
-class Endpoint;
 
 class Connection : public ConnectionBase {
   friend class Acceptor;
@@ -194,15 +188,6 @@ class Endpoint : public EndpointBase {
   }
 
   template <typename Rpc>
-  using req_t = typename Rpc::Request;
-
-  template <typename Rpc>
-  using resp_t = typename Rpc::Response;
-
-  template <typename Rpc>
-  using handler_t = typename Rpc::Handler;
-
-  template <typename Rpc>
   resp_t<Rpc> call(req_t<Rpc> &&r) {
     write(std::forward<req_t<Rpc>>(r));
     return read<resp_t<Rpc>>();
@@ -234,9 +219,6 @@ class Endpoint : public EndpointBase {
   uint32_t active_send_buffer_idx = 0;
   uint32_t active_recv_buffer_idx = 0;
 };
-
-using EndpointRef = std::reference_wrapper<Endpoint>;
-using EndpointRefs = std::vector<EndpointRef>;
 
 class ConnectionHandle : Noncopyable {
  public:
@@ -336,15 +318,4 @@ class Connector : public ConnectionHandle {
 
  private:
   sockaddr_in remote_addr_in = {};
-};
-
-struct PayloadType {
-  uint32_t id;
-  std::string message;
-};
-
-struct EchoRpc {
-  using Request = PayloadType;
-  using Response = PayloadType;
-  using Handler = std::function<Response(Request)>;
 };

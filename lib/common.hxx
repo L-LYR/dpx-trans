@@ -1,7 +1,10 @@
 #pragma once
 
 #include <cstdint>
+#include <functional>
+#include <memory>
 #include <string>
+#include <vector>
 
 #include "util/noncopyable.hxx"
 #include "util/nonmovable.hxx"
@@ -46,4 +49,31 @@ class ConnectionBase : Noncopyable, Nonmovable {
   std::string local_ip = "";
   uint16_t remote_port = -1;
   uint16_t local_port = -1;
+};
+
+class Connection;
+using ConnectionPtr = std::unique_ptr<Connection>;
+
+class Endpoint;
+using EndpointRef = std::reference_wrapper<Endpoint>;
+using EndpointRefs = std::vector<EndpointRef>;
+
+template <typename Rpc>
+using req_t = typename Rpc::Request;
+
+template <typename Rpc>
+using resp_t = typename Rpc::Response;
+
+template <typename Rpc>
+using handler_t = typename Rpc::Handler;
+
+struct PayloadType {
+  uint32_t id;
+  std::string message;
+};
+
+struct EchoRpc {
+  using Request = PayloadType;
+  using Response = PayloadType;
+  using Handler = std::function<Response(Request)>;
 };
