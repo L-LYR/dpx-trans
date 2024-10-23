@@ -1,35 +1,21 @@
-executable(
-    'zpp_bits_sample',
-    files('zpp_bits_sample.cxx'),
-    dependencies: dependencies,
-    include_directories: include_directories,
-)
+sample_deps = basic_deps + args_dep
+sample_incs = basic_incs
 
-executable(
-    'tcp_server',
-    files('tcp_server.cxx'),
-    dependencies: dependencies + args_dep,
-    include_directories: include_directories,
-)
+samples = [
+    ['zpp_bits_sample', []],
+    ['tcp_server', [uring_dep]],
+    ['tcp_client', [uring_dep]],
+    ['rdma_server', rdma_deps],
+    ['rdma_client', rdma_deps],
+]
 
-executable(
-    'tcp_client',
-    files('tcp_client.cxx'),
-    dependencies: dependencies + args_dep,
-    include_directories: include_directories,
-)
+foreach sample : samples
 
-executable(
-    'rdma_server',
-    files('rdma_server.cxx'),
-    dependencies: dependencies + args_dep,
-    include_directories: include_directories,
-)
+    executable(
+        sample[0],
+        files(sample[0] + '.cxx'),
+        dependencies: sample_deps + sample[1],
+        include_directories: sample_incs,
+    )
 
-executable(
-    'rdma_client',
-    files('rdma_client.cxx'),
-    dependencies: dependencies + args_dep,
-    include_directories: include_directories,
-)
-
+endforeach
