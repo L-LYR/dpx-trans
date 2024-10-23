@@ -1,6 +1,7 @@
 #include <args.hxx>
 #include <glaze/glaze.hpp>
 
+#include "echo.hxx"
 #include "tcp_common.hxx"
 
 int main(int args, char* argv[]) {
@@ -27,14 +28,7 @@ int main(int args, char* argv[]) {
   Acceptor a(args::get(local_ip), args::get(local_port));
   a.associate({e1, e2}).listen_and_accept();
 
-  auto echo = [](Endpoint& e) {
-    e.serve<EchoRpc>([](PayloadType&& req) -> PayloadType {
-      INFO("{}", glz::write_json<>(req).value_or("Corrupted Payload!"));
-      req.id++;
-      req.message += ", World";
-      return req;
-    });
-  };
+  auto echo = [](Endpoint& e) { e.serve<EchoRpc>(); };
 
   std::jthread bg_e1(echo, std::ref(e1));
   std::jthread bg_e2(echo, std::ref(e2));

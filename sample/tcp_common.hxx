@@ -194,8 +194,9 @@ class Endpoint : public EndpointBase {
   }
 
   template <typename Rpc>
-  void serve(handler_t<Rpc> &&fn) {
-    write(fn(read<resp_t<Rpc>>()));
+  void serve() {
+    // TODO: dispatch multiple rpcs
+    write(Rpc::handler(read<resp_t<Rpc>>()));
   }
 
  private:

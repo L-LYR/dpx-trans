@@ -1,6 +1,7 @@
 #include <args.hxx>
 #include <glaze/glaze.hpp>
 
+#include "echo.hxx"
 #include "tcp_common.hxx"
 
 using namespace std::chrono_literals;

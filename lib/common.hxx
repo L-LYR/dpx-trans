@@ -1,5 +1,7 @@
 #pragma once
 
+#include <zpp_bits.h>
+
 #include <cstdint>
 #include <functional>
 #include <memory>
@@ -67,13 +69,8 @@ using resp_t = typename Rpc::Response;
 template <typename Rpc>
 using handler_t = typename Rpc::Handler;
 
-struct PayloadType {
-  uint32_t id;
-  std::string message;
-};
-
-struct EchoRpc {
-  using Request = PayloadType;
-  using Response = PayloadType;
-  using Handler = std::function<Response(Request)>;
+template <typename T>
+concept Rpc = requires(T rpc, req_t<T> req, resp_t<T> resp) {
+  { rpc.id } -> std::convertible_to<uint64_t>;
+  { resp = rpc.handler(req) };
 };
