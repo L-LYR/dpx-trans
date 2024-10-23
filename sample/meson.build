@@ -16,6 +16,7 @@ foreach sample : samples
         files([sample[0] + '.cxx'] + sample[1]),
         dependencies: sample_deps + sample[2],
         include_directories: sample_incs,
+        link_with: dpx_trans,
     )
 
 endforeach

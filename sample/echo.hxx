@@ -4,7 +4,7 @@
 
 #include <functional>
 
-#include "common.hxx"
+#include "concept/rpc.hxx"
 
 using namespace zpp::bits::literals;
 struct PayloadType {

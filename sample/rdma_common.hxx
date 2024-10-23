@@ -7,11 +7,18 @@
 
 #include <iostream>
 
-#include "common.hxx"
 #include "memory/simple_buffer.hxx"
+#include "priv/common.hxx"
 #include "util/fatal.hxx"
 #include "util/hex_dump.hxx"
 #include "util/logger.hxx"
+
+class Connection;
+using ConnectionPtr = std::unique_ptr<Connection>;
+
+class Endpoint;
+using EndpointRef = std::reference_wrapper<Endpoint>;
+using EndpointRefs = std::vector<EndpointRef>;
 
 class EventChannel : Noncopyable, Nonmovable {
   friend class Connection;

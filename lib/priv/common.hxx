@@ -1,12 +1,7 @@
 #pragma once
 
-#include <zpp_bits.h>
-
 #include <cstdint>
-#include <functional>
-#include <memory>
 #include <string>
-#include <vector>
 
 #include "util/noncopyable.hxx"
 #include "util/nonmovable.hxx"
@@ -41,7 +36,7 @@ class EndpointBase : Noncopyable, Nonmovable {
 
 class ConnectionBase : Noncopyable, Nonmovable {
  public:
-  ~ConnectionBase() {}
+  ~ConnectionBase() = default;
 
  protected:
   ConnectionBase(Side side_) : side(side_) {}
@@ -53,24 +48,23 @@ class ConnectionBase : Noncopyable, Nonmovable {
   uint16_t local_port = -1;
 };
 
-class Connection;
-using ConnectionPtr = std::unique_ptr<Connection>;
+class ConnectionHandleBase : Noncopyable, Nonmovable {
+ public:
+  ~ConnectionHandleBase() = default;
 
-class Endpoint;
-using EndpointRef = std::reference_wrapper<Endpoint>;
-using EndpointRefs = std::vector<EndpointRef>;
+ protected:
+  ConnectionHandleBase(Side side_) : side(side_) {}
 
-template <typename Rpc>
-using req_t = typename Rpc::Request;
-
-template <typename Rpc>
-using resp_t = typename Rpc::Response;
-
-template <typename Rpc>
-using handler_t = typename Rpc::Handler;
-
-template <typename T>
-concept Rpc = requires(T rpc, req_t<T> req, resp_t<T> resp) {
-  { rpc.id } -> std::convertible_to<uint64_t>;
-  { resp = rpc.handler(req) };
+  Side side;
 };
+
+#ifdef USE_TCP
+
+#include "priv/tcp/connection.hxx"
+#include "priv/tcp/endpoint.hxx"
+
+using Endpoint = tcp::Endpoint;
+using Acceptor = tcp::Acceptor;
+using Connector = tcp::Connector;
+
+#endif

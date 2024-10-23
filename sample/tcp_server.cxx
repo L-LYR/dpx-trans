@@ -2,7 +2,10 @@
 #include <glaze/glaze.hpp>
 
 #include "echo.hxx"
-#include "tcp_common.hxx"
+
+#define USE_TCP
+#include "priv/common.hxx"
+#undef USE_TCP
 
 int main(int args, char* argv[]) {
   args::ArgumentParser p("Sample tcp server");
@@ -23,8 +26,8 @@ int main(int args, char* argv[]) {
     return -1;
   }
 
-  Endpoint e1(1, 128);
-  Endpoint e2(1, 128);
+  Endpoint e1(2, 128);
+  Endpoint e2(2, 128);
   Acceptor a(args::get(local_ip), args::get(local_port));
   a.associate({e1, e2}).listen_and_accept();
 
