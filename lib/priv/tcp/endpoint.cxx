@@ -16,6 +16,9 @@ Endpoint::Endpoint(size_t n_qe, size_t max_payload_size) : buffers(n_qe, max_pay
 }
 
 Endpoint::~Endpoint() {
+  if (running()) {
+    stop();
+  }
   poller.join();
   for (auto &fiber : fibers) {
     fiber.join();
@@ -35,6 +38,20 @@ size_t Endpoint::poll(size_t n) {
     io_uring_cqe_seen(&ring, &cqe);
   }
   return got_n;
+}
+
+void Endpoint::run() {
+  if (running()) {
+    return;
+  }
+  EndpointBase::run();
+  poller = boost::fibers::fiber([this]() {
+    while (running()) {
+      if (auto n = poll(1); n == 0) {
+        boost::this_fiber::sleep_for(100ns);
+      }
+    }
+  });
 }
 
 std::pair<Buffer &, Buffer &> Endpoint::get_buffer_pair() {
