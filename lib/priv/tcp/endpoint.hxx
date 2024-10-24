@@ -3,7 +3,6 @@
 #include <liburing.h>
 
 #include <boost/fiber/future.hpp>
-#include <iostream>
 
 #include "concept/rpc.hxx"
 #include "memory/simple_buffer.hxx"
@@ -11,6 +10,7 @@
 #include "priv/tcp/connection.hxx"
 #include "util/fatal.hxx"
 #include "util/hex_dump.hxx"
+#include "util/logger.hxx"
 
 namespace tcp {
 
@@ -23,53 +23,71 @@ class Endpoint : public EndpointBase {
   Endpoint(size_t n_qe, size_t max_payload_size);
   ~Endpoint();
 
-  size_t poll(size_t n) {
-    io_uring_cqe *cqes = nullptr;
-    auto got_n = io_uring_peek_batch_cqe(&ring, &cqes, n);
-    for (auto &cqe : std::span(cqes, got_n)) {
-      auto idx = io_uring_cqe_get_data64(&cqe);
-      result_ps[idx].set_value(cqe.res);
-      io_uring_cqe_seen(&ring, &cqe);
-    }
-    return got_n;
-  }
-
-  template <typename Payload>
-  void write(Payload &&payload) {
-    auto &in = get_send_buffer();
-    auto serializer = zpp::bits::out(in);
-    serializer(payload).or_throw();
-    std::cout << std::endl << Hexdump(in.data(), serializer.position()) << std::endl;
-    auto n = post<Op::Write>(in, serializer.position()).get();
-    if (n < 0) {
-      die("Fail to write payload, errno: {}", -n);
-    }
-  }
-
-  template <typename Payload>
-  Payload read() {
-    auto &out = get_recv_buffer();
-    auto n = post<Op::Read>(out, out.size()).get();
-    if (n < 0) {
-      die("Fail to read payload, errno: {}", -n);
-    }
-    auto resp = Payload{};
-    std::cout << std::endl << Hexdump(out.data(), n) << std::endl;
-    auto deserializer = zpp::bits::in(out);
-    deserializer(resp).or_throw();
-    return resp;
-  }
+  size_t poll(size_t n);
 
   template <Rpc Rpc>
   resp_t<Rpc> call(req_t<Rpc> &&r) {
-    write(std::forward<req_t<Rpc>>(r));
-    return read<resp_t<Rpc>>();
+    auto [in_buf, out_buf] = get_buffer_pair();
+    auto serializer = zpp::bits::out(in_buf);
+    serializer(Rpc::id, r).or_throw();
+
+    TRACE("\n{}", Hexdump(in_buf.data(), serializer.position()));
+
+    auto n_write = post<Op::Write>(in_buf, serializer.position()).get();
+    if (n_write < 0) {
+      die("Fail to write payload, errno: {}", -n_write);
+    }
+    auto n_read = post<Op::Read>(out_buf, out_buf.size()).get();
+    if (n_read < 0) {
+      die("Fail to read payload, errno: {}", -n_read);
+    }
+
+    TRACE("\n{}", Hexdump(out_buf.data(), n_read));
+
+    auto deserializer = zpp::bits::in(out_buf);
+    rpc_id_t id = 0;
+    resp_t<Rpc> resp = {};
+    deserializer(id, resp).or_throw();
+    if (id != Rpc::id) {
+      die("Mismatch rpc id, expected {} but got {}", Rpc::id, id);
+    }
+    return resp;
   }
 
-  template <Rpc Rpc>
-  void serve() {
-    // TODO: dispatch multiple rpcs
-    write(Rpc::handler(read<req_t<Rpc>>()));
+  template <Rpc... Rpcs>
+  void serve_once() {
+    // constexpr auto n = sizeof...(Rpcs);
+    // constexpr uint64_t ids[] = {Rpcs::id...};
+
+    auto [in_buf, out_buf] = get_buffer_pair();
+
+    auto n_read = post<Op::Read>(out_buf, out_buf.size()).get();
+    if (n_read < 0) {
+      die("Fail to read payload, errno: {}", -n_read);
+    }
+
+    auto deserializer = zpp::bits::in(out_buf);
+
+    rpc_id_t id = 0;
+    deserializer(id).or_throw();
+
+    auto serializer = zpp::bits::out(in_buf);
+
+    auto fn = [&]<Rpc Rpc>() -> void {
+      if (id == Rpc::id) {
+        req_t<Rpc> req = {};
+        deserializer(req).or_throw();
+        resp_t<Rpc> resp = Rpc::handler(req);
+        serializer(Rpc::id, resp).or_throw();
+      }
+    };
+
+    (fn.template operator()<Rpcs>(), ...);
+
+    auto n_write = post<Op::Write>(in_buf, serializer.position()).get();
+    if (n_write < 0) {
+      die("Fail to write payload, errno: {}", -n_write);
+    }
   }
 
  private:
@@ -100,15 +118,13 @@ class Endpoint : public EndpointBase {
   }
 
   // TODO better one
-  Buffer &get_send_buffer();
-  Buffer &get_recv_buffer();
+  std::pair<Buffer &, Buffer &> get_buffer_pair();
 
   ConnectionPtr conn = nullptr;
   io_uring ring;
   Buffers buffers;
   std::vector<boost::fibers::promise<int>> result_ps;
-  uint32_t active_send_buffer_idx = 0;
-  uint32_t active_recv_buffer_idx = 0;
+  uint32_t active_buffer_idx = 0;
 };
 
 }  // namespace tcp

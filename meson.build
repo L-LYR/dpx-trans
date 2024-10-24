@@ -13,18 +13,26 @@ project(
     ],
 )
 
-add_project_arguments(
-    '-Wno-c++23-extensions',
-    language: ['cpp'],
-)
-add_project_arguments(
+c_cpp_extra_args = [
     '-Wno-c99-extensions',
     '-Wno-gnu-anonymous-struct',
     '-Wno-nested-anon-types',
     '-Wno-zero-length-array',
     '-Wno-deprecated-enum-enum-conversion',
-    language: ['c', 'cpp'],
-)
+]
+
+cpp_extra_args = [
+    '-Wno-c++23-extensions',
+]
+
+if get_option('buildtype') == 'release'
+    c_cpp_extra_args += '-DSPDLOG_ACTIVE_LEVEL=SPDLOG_LEVEL_INFO'
+else
+    c_cpp_extra_args += '-DSPDLOG_ACTIVE_LEVEL=SPDLOG_LEVEL_TRACE'
+endif
+
+add_project_arguments(cpp_extra_args, language: ['cpp'])
+add_project_arguments(c_cpp_extra_args, language: ['c', 'cpp'])
 
 cmake = import('cmake')
 

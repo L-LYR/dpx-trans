@@ -10,6 +10,8 @@
 using namespace std::chrono_literals;
 
 int main(int args, char* argv[]) {
+  spdlog::set_level(spdlog::level::trace);
+
   args::ArgumentParser p("Sample tcp server");
   args::HelpFlag help(p, "help", "Display this help menu", {'h', "help"});
   args::ValueFlag<std::string> local_ip(p, "local ip", "local ip", {"local_ip"}, args::Options::Required);
@@ -42,8 +44,10 @@ int main(int args, char* argv[]) {
         }
       }
     });
-    auto resp = e.call<EchoRpc>(PayloadType{.id = i, .message = "Hello"});
-    INFO("{}", glz::write_json<>(resp).value_or("Corrupted Payload!"));
+    auto echo_resp = e.call<EchoRpc>(PayloadType{.id = i, .message = "Hello"});
+    INFO("{}", glz::write_json<>(echo_resp).value_or("Corrupted Payload!"));
+    auto hello_resp = e.call<HelloRpc>("Hello");
+    INFO("{}", hello_resp);
     std::this_thread::sleep_for(1s);
     e.stop();
     poller.join();

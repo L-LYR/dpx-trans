@@ -37,7 +37,9 @@ std::string to_string(const CustomHexdump<RowSize, ShowAscii> &dump) {
         }
       }
     }
-    out << '\n';
+    if (i < s.size() - 1) {
+      out << '\n';
+    }
   }
   return out.str();
 }
@@ -49,15 +51,10 @@ std::ostream &operator<<(std::ostream &out, const CustomHexdump<RowSize, ShowAsc
 }
 
 template <size_t RowSize, bool ShowAscii>
-struct std::formatter<CustomHexdump<RowSize, ShowAscii>> {
+struct std::formatter<CustomHexdump<RowSize, ShowAscii>> : std::formatter<std::string> {
   template <typename Context>
-  constexpr Context::iterator parse(Context &ctx) {
-    return ctx.end();
-  }
-
-  template <typename Context>
-  Context::iterator format(CustomHexdump<RowSize, ShowAscii> dump, Context &ctx) const {
-    return std::ranges::copy(std::to_string(dump), ctx.out()).out;
+  Context::iterator format(const CustomHexdump<RowSize, ShowAscii> &dump, Context &ctx) const {
+    return std::formatter<std::string>::format(std::to_string(dump), ctx);
   }
 };
 

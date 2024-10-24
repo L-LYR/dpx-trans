@@ -3,10 +3,10 @@ sample_incs = basic_incs
 
 samples = [
     ['zpp_bits_sample', [], []],
-    ['tcp_server', ['echo.cxx'], [uring_dep]],
-    ['tcp_client', ['echo.cxx'], [uring_dep]],
-    ['rdma_server', ['echo.cxx'], rdma_deps],
-    ['rdma_client', ['echo.cxx'], rdma_deps],
+    ['tcp_server', [], [uring_dep]],
+    ['tcp_client', [], [uring_dep]],
+    ['rdma_server', [], rdma_deps],
+    ['rdma_client', [], rdma_deps],
 ]
 
 foreach sample : samples
