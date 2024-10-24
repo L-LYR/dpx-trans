@@ -1,23 +1,29 @@
 #pragma once
 
-#include <zpp_bits.h>
-
-#include <functional>
-
 #include "concept/rpc.hxx"
+#include "glaze/json/write.hpp"
+#include "util/logger.hxx"
 
-using namespace zpp::bits::literals;
 struct PayloadType {
   uint32_t id;
   std::string message;
 };
 
-struct EchoRpc {
-  inline constexpr static uint64_t id = "Echo"_sha1_int;
-  using Request = PayloadType;
-  using Response = PayloadType;
-  using Handler = const std::function<Response(Request)>;
-  static Handler handler;
+struct EchoRpc : RpcBase<"Echo", PayloadType, PayloadType> {
+  inline const static Handler handler = [](Request&& req) -> Response {
+    INFO("{}", glz::write_json<>(req).value_or("Corrupted Payload!"));
+    req.id++;
+    req.message += ", World";
+    return req;
+  };
+};
+
+struct HelloRpc : RpcBase<"Hello", std::string, std::string> {
+  inline const static Handler handler = [](Request&& req) -> Response {
+    INFO("{}", req);
+    return "Echo: " + req;
+  };
 };
 
 static_assert(Rpc<EchoRpc>, "?");
+static_assert(Rpc<HelloRpc>, "?");

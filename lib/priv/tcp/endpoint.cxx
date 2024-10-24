@@ -4,7 +4,7 @@
 
 namespace tcp {
 
-Endpoint::Endpoint(size_t n_qe, size_t max_payload_size) : buffers(n_qe, max_payload_size) {
+Endpoint::Endpoint(size_t n_qe, size_t max_payload_size) : buffers(n_qe, max_payload_size), result_ps(n_qe) {
   assert(n_qe != 0 && n_qe % 2 == 0);
   if (auto ec = io_uring_queue_init(n_qe, &ring, 0); ec < 0) {
     die("Fail to init ring, errno: {}", -ec);
@@ -22,16 +22,22 @@ Endpoint::~Endpoint() {
   io_uring_queue_exit(&ring);
 };
 
-Buffer &Endpoint::get_send_buffer() {
-  active_send_buffer_idx = (active_send_buffer_idx + 1) % (buffers.size() / 2);
-  buffers[active_send_buffer_idx].clear();
-  return buffers[active_send_buffer_idx];
+size_t Endpoint::poll(size_t n) {
+  io_uring_cqe *cqes = nullptr;
+  auto got_n = io_uring_peek_batch_cqe(&ring, &cqes, n);
+  for (auto &cqe : std::span(cqes, got_n)) {
+    auto idx = io_uring_cqe_get_data64(&cqe);
+    result_ps[idx].set_value(cqe.res);
+    io_uring_cqe_seen(&ring, &cqe);
+  }
+  return got_n;
 }
 
-Buffer &Endpoint::get_recv_buffer() {
-  active_recv_buffer_idx = (active_recv_buffer_idx + 1) % (buffers.size() / 2);
-  buffers[active_recv_buffer_idx + buffers.size() / 2].clear();
-  return buffers[active_recv_buffer_idx + buffers.size() / 2];
+std::pair<Buffer &, Buffer &> Endpoint::get_buffer_pair() {
+  active_buffer_idx = (active_buffer_idx + 1) % (buffers.size() / 2);
+  buffers[active_buffer_idx].clear();
+  buffers[active_buffer_idx + buffers.size() / 2].clear();
+  return {buffers[active_buffer_idx], buffers[active_buffer_idx + buffers.size() / 2]};
 }
 
 }  // namespace tcp

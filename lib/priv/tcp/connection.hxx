@@ -27,7 +27,7 @@ class Connection : public ConnectionBase {
  private:
   Connection(Side side_, int sock_);
 
-  static ConnectionPtr establish(Side side, int sock, Endpoint & /* e */);
+  static void establish(Side side, int sock, Endpoint &e);
 
   int sock = -1;
 };

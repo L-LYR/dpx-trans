@@ -31,7 +31,7 @@ class EndpointBase : Noncopyable, Nonmovable {
   void stop() { s = Status::Stopped; }
 
  protected:
-  Status s;  // TODO: maybe check in another thread
+  Status s;
 };
 
 class ConnectionBase : Noncopyable, Nonmovable {

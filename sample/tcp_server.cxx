@@ -7,7 +7,11 @@
 #include "priv/common.hxx"
 #undef USE_TCP
 
+using namespace std::chrono_literals;
+
 int main(int args, char* argv[]) {
+  spdlog::set_level(spdlog::level::trace);
+
   args::ArgumentParser p("Sample tcp server");
   args::HelpFlag help(p, "help", "Display this help menu", {'h', "help"});
   args::ValueFlag<std::string> local_ip(p, "local ip", "local ip", {"local_ip"}, args::Options::Required);
@@ -31,7 +35,20 @@ int main(int args, char* argv[]) {
   Acceptor a(args::get(local_ip), args::get(local_port));
   a.associate({e1, e2}).listen_and_accept();
 
-  auto echo = [](Endpoint& e) { e.serve<EchoRpc>(); };
+  auto echo = [](Endpoint& e) {
+    auto poller = boost::fibers::fiber([&e]() {
+      while (e.running()) {
+        if (auto n = e.poll(1); n == 0) {
+          boost::this_fiber::sleep_for(100ns);
+        }
+      }
+    });
+    e.serve_once<EchoRpc, HelloRpc>();
+    e.serve_once<EchoRpc, HelloRpc>();
+    std::this_thread::sleep_for(1s);
+    e.stop();
+    poller.join();
+  };
 
   std::jthread bg_e1(echo, std::ref(e1));
   std::jthread bg_e2(echo, std::ref(e2));
