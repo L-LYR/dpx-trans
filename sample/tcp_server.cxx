@@ -7,8 +7,6 @@
 #include "priv/common.hxx"
 #undef USE_TCP
 
-using namespace std::chrono_literals;
-
 int main(int args, char* argv[]) {
   spdlog::set_level(spdlog::level::trace);
 
@@ -30,25 +28,12 @@ int main(int args, char* argv[]) {
     return -1;
   }
 
-  Endpoint e1(2, 128);
-  Endpoint e2(2, 128);
+  Endpoint e1(16, 128);
+  Endpoint e2(16, 128);
   Acceptor a(args::get(local_ip), args::get(local_port));
   a.associate({e1, e2}).listen_and_accept();
 
-  auto echo = [](Endpoint& e) {
-    auto poller = boost::fibers::fiber([&e]() {
-      while (e.running()) {
-        if (auto n = e.poll(1); n == 0) {
-          boost::this_fiber::sleep_for(100ns);
-        }
-      }
-    });
-    e.serve_once<EchoRpc, HelloRpc>();
-    e.serve_once<EchoRpc, HelloRpc>();
-    std::this_thread::sleep_for(1s);
-    e.stop();
-    poller.join();
-  };
+  auto echo = [](Endpoint& e) { e.serve<EchoRpc, HelloRpc>(4); };
 
   std::jthread bg_e1(echo, std::ref(e1));
   std::jthread bg_e2(echo, std::ref(e2));

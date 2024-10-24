@@ -27,10 +27,10 @@ class EndpointBase : Noncopyable, Nonmovable {
   bool running() const { return s == Status::Running; }
   bool stopped() const { return s == Status::Stopped; }
 
+ protected:
   void run() { s = Status::Running; }
   void stop() { s = Status::Stopped; }
 
- protected:
   Status s;
 };
 

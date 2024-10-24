@@ -31,29 +31,19 @@ int main(int args, char* argv[]) {
     return -1;
   }
   Connector c(args::get(remote_ip), args::get(remote_port));
-  Endpoint e1(2, 128);
-  Endpoint e2(2, 128);
-  c.connect(e1, args::get(local_ip), 10087);
-  c.connect(e2, args::get(local_ip), 10088);
 
-  auto fn = [](Endpoint& e, uint32_t i) {
-    auto poller = boost::fibers::fiber([&e]() {
-      while (e.running()) {
-        if (auto n = e.poll(1); n == 0) {
-          boost::this_fiber::sleep_for(100ns);
-        }
-      }
-    });
+  auto fn = [&](uint32_t i) {
+    Endpoint e(2, 128);
+    c.connect(e, args::get(local_ip), 10086 + i);
+    e.run();
     auto echo_resp = e.call<EchoRpc>(PayloadType{.id = i, .message = "Hello"});
     INFO("{}", glz::write_json<>(echo_resp).value_or("Corrupted Payload!"));
     auto hello_resp = e.call<HelloRpc>("Hello");
     INFO("{}", hello_resp);
     std::this_thread::sleep_for(1s);
-    e.stop();
-    poller.join();
   };
 
-  std::jthread t1(fn, std::ref(e1), 1);
-  std::jthread t2(fn, std::ref(e2), 2);
+  std::jthread t1(fn, 1);
+  std::jthread t2(fn, 2);
   return 0;
 }
