@@ -31,10 +31,7 @@ Connection::Connection(Side side_, int sock_) : ConnectionBase(side_), sock(sock
   local_port = ntohs(addr_in.sin_port);
 }
 
-void Connection::establish(Side side, int sock, Endpoint &e) {
-  e.conn = ConnectionPtr(new Connection(side, sock));
-  e.run();
-}
+void Connection::establish(Side side, int sock, Endpoint &e) { e.conn = ConnectionPtr(new Connection(side, sock)); }
 
 namespace {
 

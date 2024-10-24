@@ -20,6 +20,8 @@ std::string to_string(const CustomHexdump<RowSize, ShowAscii> &dump) {
   std::stringstream out;
   auto &s = dump.s;
   out.fill('0');
+  out << std::uppercase << std::hex << "0x" << reinterpret_cast<uintptr_t>(s.data());
+  out << std::dec << ' ' << s.size() << '\n';
   for (auto i = 0uz; i < s.size(); i += RowSize) {
     out << std::setw(8) << std::hex << i << ": ";
     for (auto j = 0uz; j < RowSize; ++j) {
@@ -37,7 +39,7 @@ std::string to_string(const CustomHexdump<RowSize, ShowAscii> &dump) {
         }
       }
     }
-    if (i < s.size() - 1) {
+    if (i + RowSize < s.size()) {
       out << '\n';
     }
   }

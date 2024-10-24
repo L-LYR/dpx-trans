@@ -16,6 +16,10 @@ Endpoint::Endpoint(size_t n_qe, size_t max_payload_size) : buffers(n_qe, max_pay
 }
 
 Endpoint::~Endpoint() {
+  poller.join();
+  for (auto &fiber : fibers) {
+    fiber.join();
+  }
   if (auto ec = io_uring_unregister_buffers(&ring); ec < 0) {
     die("Fail to unregister buffers, errno: {}", -ec);
   }

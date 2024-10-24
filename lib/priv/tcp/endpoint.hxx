@@ -12,6 +12,8 @@
 #include "util/hex_dump.hxx"
 #include "util/logger.hxx"
 
+using namespace std::chrono_literals;
+
 namespace tcp {
 
 class Endpoint : public EndpointBase {
@@ -31,7 +33,7 @@ class Endpoint : public EndpointBase {
     auto serializer = zpp::bits::out(in_buf);
     serializer(Rpc::id, r).or_throw();
 
-    TRACE("\n{}", Hexdump(in_buf.data(), serializer.position()));
+    TRACE("{}", Hexdump(in_buf.data(), serializer.position()));
 
     auto n_write = post<Op::Write>(in_buf, serializer.position()).get();
     if (n_write < 0) {
@@ -42,7 +44,7 @@ class Endpoint : public EndpointBase {
       die("Fail to read payload, errno: {}", -n_read);
     }
 
-    TRACE("\n{}", Hexdump(out_buf.data(), n_read));
+    TRACE("{}", Hexdump(out_buf.data(), n_read));
 
     auto deserializer = zpp::bits::in(out_buf);
     rpc_id_t id = 0;
@@ -52,6 +54,19 @@ class Endpoint : public EndpointBase {
       die("Mismatch rpc id, expected {} but got {}", Rpc::id, id);
     }
     return resp;
+  }
+
+  template <Rpc Rpc>
+  bool dispatch(rpc_id_t id, zpp::bits::in<Buffer> &deserializer, zpp::bits::out<Buffer> &serializer) {
+    if (Rpc::id == id) {
+      req_t<Rpc> req = {};
+      deserializer(req).or_throw();
+      resp_t<Rpc> resp = Rpc::handler(req);
+      serializer(Rpc::id, resp).or_throw();
+      return true;
+    }
+    TRACE("expected {} got {}", Rpc::id, id);
+    return false;
   }
 
   template <Rpc... Rpcs>
@@ -66,27 +81,60 @@ class Endpoint : public EndpointBase {
       die("Fail to read payload, errno: {}", -n_read);
     }
 
+    if (n_read == 0) {
+      // connection is closed
+      if (running()) {
+        INFO("Connection was closed by peer, going to stop.");
+        stop();
+      }
+      return;
+    }
+
+    TRACE("n_read: {}", n_read);
+
     auto deserializer = zpp::bits::in(out_buf);
 
     rpc_id_t id = 0;
     deserializer(id).or_throw();
 
+    TRACE("id: {}", id);
+
     auto serializer = zpp::bits::out(in_buf);
 
-    auto fn = [&]<Rpc Rpc>() -> void {
-      if (id == Rpc::id) {
-        req_t<Rpc> req = {};
-        deserializer(req).or_throw();
-        resp_t<Rpc> resp = Rpc::handler(req);
-        serializer(Rpc::id, resp).or_throw();
-      }
-    };
-
-    (fn.template operator()<Rpcs>(), ...);
+    if (!(dispatch<Rpcs>(id, deserializer, serializer) || ...)) {
+      die("Mismatch rpc id, got {}", id);
+    }
 
     auto n_write = post<Op::Write>(in_buf, serializer.position()).get();
     if (n_write < 0) {
       die("Fail to write payload, errno: {}", -n_write);
+    }
+
+    TRACE("n_write: {}", n_write);
+  }
+
+  void run() {
+    EndpointBase::run();
+    poller = boost::fibers::fiber([this]() {
+      while (running()) {
+        if (auto n = poll(1); n == 0) {
+          boost::this_fiber::sleep_for(100ns);
+        }
+      }
+    });
+  }
+
+  template <Rpc... Rpcs>
+  void serve(size_t n_fiber) {
+    run();
+    assert(n_fiber > 0 && n_fiber <= buffers.size());
+    fibers.reserve(n_fiber);
+    for (auto i = 0uz; i < n_fiber; ++i) {
+      fibers.emplace_back([this]() {
+        while (running()) {
+          serve_once<Rpcs...>();
+        }
+      });
     }
   }
 
@@ -123,6 +171,8 @@ class Endpoint : public EndpointBase {
   ConnectionPtr conn = nullptr;
   io_uring ring;
   Buffers buffers;
+  boost::fibers::fiber poller;
+  std::vector<boost::fibers::fiber> fibers;
   std::vector<boost::fibers::promise<int>> result_ps;
   uint32_t active_buffer_idx = 0;
 };
