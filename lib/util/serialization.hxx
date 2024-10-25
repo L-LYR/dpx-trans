@@ -4,5 +4,5 @@
 
 #include "memory/simple_buffer.hxx"
 
-using Serializer = zpp::bits::out<Buffer>;
-using Deserializer = zpp::bits::in<Buffer>;
+using Serializer = zpp::bits::out<BorrowedBuffer>;
+using Deserializer = zpp::bits::in<BorrowedBuffer>;

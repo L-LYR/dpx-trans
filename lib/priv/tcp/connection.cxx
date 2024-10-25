@@ -10,8 +10,7 @@ namespace tcp {
 Connection::~Connection() {
   if (sock != -1) {
     if (auto ec = ::close(sock); ec < 0) {
-      die("Fail to close socket {}, connection {}:{}-{}:{}, errno: {}", sock, local_ip, local_port, remote_ip,
-          remote_port, errno);
+      die("Fail to close socket {}, connection {} <-> {}, errno: {}", sock, local_addr, remote_addr, errno);
     }
   }
 }
@@ -22,16 +21,18 @@ Connection::Connection(Side side_, int sock_) : ConnectionBase(side_), sock(sock
   if (auto ec = ::getsockname(sock, reinterpret_cast<sockaddr *>(&addr_in), &addr_in_len); ec < 0) {
     die("Fail to get local addr, errno: {}", errno);
   }
-  local_ip = inet_ntoa(addr_in.sin_addr);
-  local_port = ntohs(addr_in.sin_port);
+  local_addr = std::format("{}:{}", inet_ntoa(addr_in.sin_addr), ntohs(addr_in.sin_port));
   if (auto ec = ::getpeername(sock, reinterpret_cast<sockaddr *>(&addr_in), &addr_in_len); ec < 0) {
     die("Fail to get remote addr, errno: {}", errno);
   }
-  remote_ip = inet_ntoa(addr_in.sin_addr);
-  local_port = ntohs(addr_in.sin_port);
+  remote_addr = std::format("{}:{}", inet_ntoa(addr_in.sin_addr), ntohs(addr_in.sin_port));
 }
 
-void Connection::establish(Side side, int sock, Endpoint &e) { e.conn = ConnectionPtr(new Connection(side, sock)); }
+void Connection::establish(Side side, int sock, Endpoint &e) {
+  e.conn = ConnectionPtr(new Connection(side, sock));
+  TRACE("Connection {} <-> {} established.", e.conn->local_addr, e.conn->remote_addr);
+  e.prepare();
+}
 
 namespace {
 

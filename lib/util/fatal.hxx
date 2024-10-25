@@ -10,12 +10,12 @@ inline std::string die_prefix(std::source_location location) {
 }  // namespace detail
 
 template <typename... Args>
-inline void die(std::string_view fmt, std::source_location location, Args &&...args) {
+[[noreturn]] inline void die(std::string_view fmt, std::source_location location, Args &&...args) {
   throw std::runtime_error(detail::die_prefix(location) + std::vformat(fmt, std::make_format_args(args...)));
 }
 
 template <>
-inline void die<>(std::string_view message, std::source_location location) {
+[[noreturn]] inline void die<>(std::string_view message, std::source_location location) {
   die("{}", location, message);
 }
 

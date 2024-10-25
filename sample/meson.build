@@ -7,6 +7,8 @@ samples = [
     ['tcp_client', [], [uring_dep]],
     ['rdma_server', [], rdma_deps],
     ['rdma_client', [], rdma_deps],
+    ['doca_comch_client', [], [doca_deps]],
+    ['doca_comch_server', [], [doca_deps]],
 ]
 
 foreach sample : samples

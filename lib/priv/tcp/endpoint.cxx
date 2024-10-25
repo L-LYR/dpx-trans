@@ -9,8 +9,8 @@ Endpoint::Endpoint(size_t n_qe, size_t max_payload_size) : buffers(n_qe, max_pay
   if (auto ec = io_uring_queue_init(n_qe, &ring, 0); ec < 0) {
     die("Fail to init ring, errno: {}", -ec);
   }
-  std::vector<iovec> iovecs = buffers;
-  if (auto ec = io_uring_register_buffers(&ring, iovecs.data(), buffers.size()); ec < 0) {
+  std::vector<iovec> iovecs = buffers.to_iovec();
+  if (auto ec = io_uring_register_buffers(&ring, iovecs.data(), iovecs.size()); ec < 0) {
     die("Fail to register buffers, errno: {}", -ec);
   }
 }
@@ -18,10 +18,10 @@ Endpoint::Endpoint(size_t n_qe, size_t max_payload_size) : buffers(n_qe, max_pay
 Endpoint::~Endpoint() {
   if (running()) {
     stop();
-  }
-  poller.join();
-  for (auto &fiber : fibers) {
-    fiber.join();
+    poller.join();
+    for (auto &fiber : fibers) {
+      fiber.join();
+    }
   }
   if (auto ec = io_uring_unregister_buffers(&ring); ec < 0) {
     die("Fail to unregister buffers, errno: {}", -ec);
@@ -54,11 +54,12 @@ void Endpoint::run() {
   });
 }
 
-std::pair<Buffer &, Buffer &> Endpoint::get_buffer_pair() {
-  active_buffer_idx = (active_buffer_idx + 1) % (buffers.size() / 2);
-  buffers[active_buffer_idx].clear();
-  buffers[active_buffer_idx + buffers.size() / 2].clear();
-  return {buffers[active_buffer_idx], buffers[active_buffer_idx + buffers.size() / 2]};
+std::tuple<BorrowedBuffer &, size_t, BorrowedBuffer &, size_t> Endpoint::get_buffer_pair() {
+  auto in_buf_idx = std::exchange(active_buffer_idx, (active_buffer_idx + 1) % (buffers.size() / 2));
+  auto out_buf_idx = in_buf_idx + (buffers.size() / 2);
+  buffers[in_buf_idx].clear();
+  buffers[out_buf_idx].clear();
+  return {buffers[in_buf_idx], in_buf_idx, buffers[out_buf_idx], out_buf_idx};
 }
 
 }  // namespace tcp

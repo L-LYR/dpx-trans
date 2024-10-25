@@ -7,7 +7,7 @@
 #include "priv/common.hxx"
 #undef USE_TCP
 
-int main(int args, char* argv[]) {
+int main(int argc, char* argv[]) {
   spdlog::set_level(spdlog::level::trace);
 
   args::ArgumentParser p("Sample tcp server");
@@ -16,7 +16,7 @@ int main(int args, char* argv[]) {
   args::ValueFlag<uint16_t> local_port(p, "local port", "local port", {"local_port"}, args::Options::Required);
 
   try {
-    p.ParseCLI(args, argv);
+    p.ParseCLI(argc, argv);
   } catch (args::Help) {
     std::cout << p;
     return 0;
