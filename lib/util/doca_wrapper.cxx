@@ -1,7 +1,6 @@
 #include "util/doca_wrapper.hxx"
 
 #include "memory/doca_simple_buffer.hxx"
-#include "util/logger.hxx"
 
 namespace doca_wrapper {
 
@@ -27,10 +26,6 @@ DocaDevRep open_doca_dev_rep(DocaDev &dev, std::string_view pci_addr, enum doca_
   doca_devinfo_rep **dev_rep_list = nullptr;
   doca_check(doca_devinfo_rep_create_list(dev.get(), filter, &dev_rep_list, &n_dev_reps));
   for (auto &devinfo_rep : std::span<doca_devinfo_rep *>(dev_rep_list, n_dev_reps)) {
-    char dev_pci_addr[DOCA_DEVINFO_REP_PCI_ADDR_SIZE] = {};
-    doca_check(doca_devinfo_rep_get_pci_addr_str(devinfo_rep, dev_pci_addr));
-    TRACE("Found device representor at {}", dev_pci_addr);
-
     uint8_t is_equal = 0;
     doca_check(doca_devinfo_rep_is_equal_pci_addr(devinfo_rep, pci_addr.data(), &is_equal));
     if (is_equal) {

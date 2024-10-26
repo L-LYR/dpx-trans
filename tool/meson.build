@@ -9,5 +9,4 @@ executable(
     files('doca_device_probe.cxx'),
     dependencies: doca_deps,
     include_directories: basic_incs,
-    link_with: dpx_trans,
 )
