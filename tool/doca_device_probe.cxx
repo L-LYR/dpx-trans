@@ -22,10 +22,16 @@ int main() try {
       char dev_rep_pci_addr[DOCA_DEVINFO_REP_PCI_ADDR_SIZE] = {};
       uint32_t n_dev_reps = 0;
       doca_devinfo_rep **dev_rep_list = nullptr;
+      doca_pci_func_type dev_rep_pci_func_type;
       doca_check(doca_devinfo_rep_create_list(dev, DOCA_DEVINFO_REP_FILTER_ALL, &dev_rep_list, &n_dev_reps));
       for (auto &devinfo_rep : std::span<doca_devinfo_rep *>(dev_rep_list, n_dev_reps)) {
         doca_check(doca_devinfo_rep_get_pci_addr_str(devinfo_rep, dev_rep_pci_addr));
-        std::cout << "Found representor at " << dev_rep_pci_addr << std::endl;
+        doca_check(doca_devinfo_rep_get_pci_func_type(devinfo_rep, &dev_rep_pci_func_type));
+        std::cout << "Found representor at " << dev_rep_pci_addr << " with type "
+                  << (dev_rep_pci_func_type == DOCA_PCI_FUNC_TYPE_PF   ? "PF"
+                      : dev_rep_pci_func_type == DOCA_PCI_FUNC_TYPE_VF ? "VF"
+                                                                       : "SF")
+                  << std::endl;
       }
       doca_check(doca_devinfo_rep_destroy_list(dev_rep_list));
 
