@@ -16,13 +16,17 @@
                              [&__doca_check_result__](doca_error_t e) { return e == __doca_check_result__; })) \
         [[unlikely]] {                                                                                         \
       die(#expr ": {}", doca_error_get_descr(__doca_check_result__));                                          \
+    } else {                                                                                                   \
+      footprint(#expr ": {}", doca_error_get_descr(__doca_check_result__));                                    \
     }                                                                                                          \
   } while (0);
 
-#define doca_check(expr)                                              \
-  do {                                                                \
-    doca_error_t __doca_check_result__ = expr;                        \
-    if (__doca_check_result__ != DOCA_SUCCESS) [[unlikely]] {         \
-      die(#expr ": {}", doca_error_get_descr(__doca_check_result__)); \
-    }                                                                 \
+#define doca_check(expr)                                                    \
+  do {                                                                      \
+    doca_error_t __doca_check_result__ = expr;                              \
+    if (__doca_check_result__ != DOCA_SUCCESS) [[unlikely]] {               \
+      die(#expr ": {}", doca_error_get_descr(__doca_check_result__));       \
+    } else {                                                                \
+      footprint(#expr ": {}", doca_error_get_descr(__doca_check_result__)); \
+    }                                                                       \
   } while (0);
