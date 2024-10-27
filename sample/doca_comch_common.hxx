@@ -1,5 +1,7 @@
 #pragma once
 
+#include <dbg.h>
+
 #include <memory>
 
 #include "memory/doca_simple_buffer.hxx"
@@ -50,6 +52,7 @@ class DocaComch {
         server(create_comch_server(dev, dev_rep, name)),
         max_msg_size(comch_server_max_msg_size(dev)),
         recv_queue_size(comch_server_recv_queue_size(server)) {
+    dbg(max_msg_size, recv_queue_size);
     start<Side::ServerSide>();
   }
   DocaComch(std::string name_, std::string dev_pci_addr)
@@ -60,6 +63,7 @@ class DocaComch {
         client(create_comch_client(dev, name)),
         max_msg_size(comch_client_max_msg_size(client)),
         recv_queue_size(comch_client_recv_queue_size(client)) {
+    dbg(max_msg_size, recv_queue_size);
     start<Side::ClientSide>();
   }
 
@@ -106,6 +110,9 @@ class DocaComch {
 
   template <Side side>
   static void send_task_err_cb(doca_comch_task_send *, doca_data, doca_data);
+
+  template <Side side>
+  static void msg_recv_cb(struct doca_comch_event_msg_recv *, uint8_t *, uint32_t, struct doca_comch_connection *);
 
   Side side;
   std::string name;
@@ -267,15 +274,19 @@ void DocaComch::start() {
   doca_check(doca_pe_connect_ctx(pe.get(), ctx));
   doca_check(doca_ctx_set_state_changed_cb(ctx, state_change_cb));
   if constexpr (side == Side::ServerSide) {
+    doca_check(doca_comch_server_event_msg_recv_register(server.get(), msg_recv_cb<side>));
+    doca_check(doca_comch_server_task_send_set_conf(server.get(), send_task_comp_cb<side>, send_task_err_cb<side>, 64));
     doca_check(doca_comch_server_event_connection_status_changed_register(server.get(), connection_event_cb,
                                                                           disconnection_event_cb));
     doca_check(
         doca_comch_server_event_consumer_register(server.get(), new_consumer_cb<side>, expired_consumer_cb<side>));
-    doca_check(doca_comch_server_task_send_set_conf(server.get(), send_task_comp_cb<side>, send_task_err_cb<side>, 64));
   } else if constexpr (side == Side::ClientSide) {
+    doca_check(doca_comch_client_event_msg_recv_register(client.get(), msg_recv_cb<side>));
+    doca_check(doca_comch_client_task_send_set_conf(client.get(), send_task_comp_cb<side>, send_task_err_cb<side>, 64));
     doca_check(
         doca_comch_client_event_consumer_register(client.get(), new_consumer_cb<side>, expired_consumer_cb<side>));
-    doca_check(doca_comch_client_task_send_set_conf(client.get(), send_task_comp_cb<side>, send_task_err_cb<side>, 64));
+  } else {
+    static_assert(false, "Unreachable");
   }
   doca_check(doca_ctx_set_user_data(ctx, doca_data{.ptr = this}));
   doca_check(doca_ctx_start(ctx));
@@ -347,6 +358,12 @@ void DocaComch::send_task_err_cb(doca_comch_task_send *task, doca_data task_user
   auto comch = reinterpret_cast<DocaComch *>(ctx_user_data.ptr);
   ERROR("Task send failed!");
   doca_task_free(doca_comch_task_send_as_task(task));
+}
+
+template <Side side>
+void DocaComch::msg_recv_cb(struct doca_comch_event_msg_recv *, uint8_t *recv_buffer, uint32_t msg_len,
+                            struct doca_comch_connection *connection) {
+  INFO("Message received!");
 }
 
 void Endpoint::producer_send_task_comp_cb(struct doca_comch_producer_task_send *task, union doca_data task_user_data,
