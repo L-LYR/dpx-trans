@@ -326,7 +326,7 @@ void DocaComch::state_change_cb(const doca_data, doca_ctx *ctx, doca_ctx_states 
                                 doca_ctx_states next_state) {
   auto comch = reinterpret_cast<DocaComch *>(ctx);
   TRACE("State change: {} -> {}", prev_state, next_state);
-  if constexpr (side == Side::ClientSide) {
+  if constexpr (side == Side::ServerSide) {
     switch (next_state) {
       case DOCA_CTX_STATE_IDLE: {
       } break;
@@ -337,7 +337,7 @@ void DocaComch::state_change_cb(const doca_data, doca_ctx *ctx, doca_ctx_states 
       case DOCA_CTX_STATE_STOPPING: {
       } break;
     }
-  } else if constexpr (side == Side::ServerSide) {
+  } else if constexpr (side == Side::ClientSide) {
     switch (next_state) {
       case DOCA_CTX_STATE_IDLE: {
       } break;
