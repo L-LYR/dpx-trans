@@ -280,11 +280,15 @@ void DocaComch::start() {
                                                                           disconnection_event_cb));
     doca_check(
         doca_comch_server_event_consumer_register(server.get(), new_consumer_cb<side>, expired_consumer_cb<side>));
+    doca_check(doca_comch_server_set_max_msg_size(server.get(), max_msg_size));
+    doca_check(doca_comch_server_set_recv_queue_size(server.get(), recv_queue_size));
   } else if constexpr (side == Side::ClientSide) {
-    doca_check(doca_comch_client_event_msg_recv_register(client.get(), msg_recv_cb<side>));
     doca_check(doca_comch_client_task_send_set_conf(client.get(), send_task_comp_cb<side>, send_task_err_cb<side>, 64));
+    doca_check(doca_comch_client_event_msg_recv_register(client.get(), msg_recv_cb<side>));
     doca_check(
         doca_comch_client_event_consumer_register(client.get(), new_consumer_cb<side>, expired_consumer_cb<side>));
+    doca_check(doca_comch_client_set_max_msg_size(client.get(), max_msg_size));
+    doca_check(doca_comch_client_set_recv_queue_size(client.get(), recv_queue_size));
   } else {
     static_assert(false, "Unreachable");
   }
