@@ -9,6 +9,7 @@
 #include "util/doca_check.hxx"
 #include "util/doca_wrapper.hxx"
 #include "util/logger.hxx"
+#include "util/unreachable.hxx"
 
 using namespace std::chrono_literals;
 using namespace doca_wrapper;
@@ -268,14 +269,14 @@ void DocaComch::start() {
   } else if constexpr (side == Side::ClientSide) {
     ctx = doca_comch_client_as_ctx(client.get());
   } else {
-    static_assert(false, "Unreachable");
+    static_unreachable;
   }
 
   doca_check(doca_pe_connect_ctx(pe.get(), ctx));
   doca_check(doca_ctx_set_state_changed_cb(ctx, state_change_cb));
   if constexpr (side == Side::ServerSide) {
-    doca_check(doca_comch_server_event_msg_recv_register(server.get(), msg_recv_cb<side>));
     doca_check(doca_comch_server_task_send_set_conf(server.get(), send_task_comp_cb<side>, send_task_err_cb<side>, 64));
+    doca_check(doca_comch_server_event_msg_recv_register(server.get(), msg_recv_cb<side>));
     doca_check(doca_comch_server_event_connection_status_changed_register(server.get(), connection_event_cb,
                                                                           disconnection_event_cb));
     doca_check(
@@ -290,10 +291,16 @@ void DocaComch::start() {
     doca_check(doca_comch_client_set_max_msg_size(client.get(), max_msg_size));
     doca_check(doca_comch_client_set_recv_queue_size(client.get(), recv_queue_size));
   } else {
-    static_assert(false, "Unreachable");
+    static_unreachable;
   }
   doca_check(doca_ctx_set_user_data(ctx, doca_data{.ptr = this}));
-  doca_check(doca_ctx_start(ctx));
+  if constexpr (side == Side::ServerSide) {
+    doca_check(doca_ctx_start(ctx));
+  } else if constexpr (side == Side::ClientSide) {
+    doca_check_ext(doca_ctx_start(ctx), DOCA_ERROR_IN_PROGRESS);
+  } else {
+    static_unreachable;
+  }
 
   progress_until([this]() { return connection != nullptr; });
 }
