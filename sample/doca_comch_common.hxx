@@ -159,7 +159,7 @@ class Endpoint : public EndpointBase {
                                                         producer_send_task_err_cb, buffers.size() / 2));
       auto ctx = doca_comch_producer_as_ctx(producer.get());
       doca_check(doca_ctx_set_state_changed_cb(ctx, default_state_change_cb));
-      doca_check(doca_ctx_set_user_data(ctx, doca_data{.ptr = this}));
+      doca_check(doca_ctx_set_user_data(ctx, doca_data(this)));
       doca_check(doca_pe_connect_ctx(producer_pe.get(), ctx));
       doca_check(doca_ctx_start(ctx));
     }
@@ -168,7 +168,7 @@ class Endpoint : public EndpointBase {
                                                              consumer_post_recv_task_err_cb, buffers.size() / 2));
       auto ctx = doca_comch_consumer_as_ctx(consumer.get());
       doca_check(doca_ctx_set_state_changed_cb(ctx, default_state_change_cb));
-      doca_check(doca_ctx_set_user_data(ctx, doca_data{.ptr = this}));
+      doca_check(doca_ctx_set_user_data(ctx, doca_data(this)));
       doca_check(doca_pe_connect_ctx(consumer_pe.get(), ctx));
       doca_check(doca_ctx_start(ctx));
     }
@@ -300,7 +300,7 @@ void DocaComch::start() {
     static_unreachable;
   }
 
-  doca_check(doca_ctx_set_user_data(ctx, doca_data{.ptr = this}));
+  doca_check(doca_ctx_set_user_data(ctx, doca_data(this)));
 
   if constexpr (side == Side::ServerSide) {
     doca_check(doca_ctx_start(ctx));
