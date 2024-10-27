@@ -1,6 +1,7 @@
 #pragma once
 
 #include <cassert>
+#include <format>
 #include <string>
 
 #include "util/noncopyable.hxx"
@@ -75,3 +76,16 @@ using Acceptor = tcp::Acceptor;
 using Connector = tcp::Connector;
 
 #endif
+
+template <>
+struct std::formatter<Side> : std::formatter<const char*> {
+  template <typename Context>
+  Context::iterator format(Side s, Context out) const {
+    switch (s) {
+      case Side::ServerSide:
+        return std::formatter<const char*>::format("Server", out);
+      case Side::ClientSide:
+        return std::formatter<const char*>::format("Client", out);
+    }
+  }
+};

@@ -11,12 +11,46 @@ class MmapBuffers;
 
 namespace doca_wrapper {
 
-inline std::pair<uint8_t*, size_t> doca_buf_underlying(doca_buf* buf) {
+/*
+ *
+ * doca_buf layout:
+ *
+ * head   -->            +-------------------+
+ *                       | head room         |
+ *                       |                   |
+ *                       |                   |
+ *                       |                   |
+ *                       |                   |
+ * data   -->            +-------------------+
+ *                       | data room         |
+ *                       |                   |
+ *                       |                   |
+ *                       |                   |
+ *                       |                   |
+ *                       |                   |
+ * data + data_len -->   +-------------------+
+ *                       | tail room         |
+ *                       |                   |
+ *                       |                   |
+ *                       |                   |
+ * head + len      -->   +-------------------+
+ *
+ */
+
+inline std::pair<uint8_t*, size_t> doca_buf_data(doca_buf* buf) {
   void* data = nullptr;
   size_t data_len = 0;
   doca_check(doca_buf_get_data(buf, &data));
   doca_check(doca_buf_get_data_len(buf, &data_len));
   return {reinterpret_cast<uint8_t*>(data), data_len};
+}
+
+inline std::pair<uint8_t*, size_t> doca_buf_head(doca_buf* buf) {
+  void* data = nullptr;
+  void* head = nullptr;
+  doca_check(doca_buf_get_data(buf, &data));
+  doca_check(doca_buf_get_data(buf, &head));
+  return {reinterpret_cast<uint8_t*>(head), reinterpret_cast<uint8_t*>(data) - reinterpret_cast<uint8_t*>(head)};
 }
 
 DocaComchConsumer create_comch_consumer(DocaComchConnection connection, MmapBuffers& buffers);
@@ -25,7 +59,9 @@ DocaComchConsumer create_comch_consumer(DocaComchConnection connection, MmapBuff
 
 class MmapBuffer : public BorrowedBuffer {
  public:
-  MmapBuffer(doca_buf* buf_) : BorrowedBuffer(doca_wrapper::doca_buf_underlying(buf_)), buf(buf_) {}
+  MmapBuffer(doca_buf* buf_) : BorrowedBuffer(doca_wrapper::doca_buf_data(buf_)), buf(buf_) {
+    std::tie(head, head_len) = doca_wrapper::doca_buf_head(buf);
+  }
   ~MmapBuffer() {
     if (buf != nullptr) {
       doca_check(doca_buf_dec_refcount(buf, nullptr));
@@ -37,6 +73,8 @@ class MmapBuffer : public BorrowedBuffer {
   MmapBuffer& operator=(MmapBuffer&& other) = delete;
 
  private:
+  uint8_t* head = nullptr;
+  size_t head_len = -1;
   doca_buf* buf = nullptr;
 };
 
@@ -76,6 +114,11 @@ class MmapBuffers : Noncopyable {
   const uint8_t* base_address() const { return base; }
   size_t total_length() const { return total_len; }
   size_t piece_length() const { return piece_len; }
+  size_t size() const {
+    uint32_t n_elements = 0;
+    doca_check(doca_buf_pool_get_num_elements(pool, &n_elements));
+    return n_elements;
+  }
 
  private:
   doca_mmap* underlying() { return mmap; }
