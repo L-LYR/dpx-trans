@@ -24,7 +24,8 @@ using ConnectionPtr = std::unique_ptr<Connection>;
 
 namespace {
 
-inline void state_change_cb(const doca_data, doca_ctx *, doca_ctx_states prev_state, doca_ctx_states next_state) {
+inline void default_state_change_cb(const doca_data, doca_ctx *, doca_ctx_states prev_state,
+                                    doca_ctx_states next_state) {
   TRACE("State change: {} -> {}", prev_state, next_state);
   // switch (next_state) {
   //   case DOCA_CTX_STATE_IDLE:
@@ -96,6 +97,9 @@ class DocaComch {
 
   void stop();
 
+  template <Side side>
+  static void state_change_cb(const doca_data, doca_ctx *, doca_ctx_states, doca_ctx_states);
+
   static void connection_event_cb(doca_comch_event_connection_status_changed *, doca_comch_connection *, uint8_t);
 
   static void disconnection_event_cb(doca_comch_event_connection_status_changed *, doca_comch_connection *, uint8_t);
@@ -154,7 +158,7 @@ class Endpoint : public EndpointBase {
       doca_check(doca_comch_producer_task_send_set_conf(producer.get(), producer_send_task_comp_cb,
                                                         producer_send_task_err_cb, buffers.size() / 2));
       auto ctx = doca_comch_producer_as_ctx(producer.get());
-      doca_check(doca_ctx_set_state_changed_cb(ctx, state_change_cb));
+      doca_check(doca_ctx_set_state_changed_cb(ctx, default_state_change_cb));
       doca_check(doca_ctx_set_user_data(ctx, doca_data{.ptr = this}));
       doca_check(doca_pe_connect_ctx(producer_pe.get(), ctx));
       doca_check(doca_ctx_start(ctx));
@@ -163,7 +167,7 @@ class Endpoint : public EndpointBase {
       doca_check(doca_comch_consumer_task_post_recv_set_conf(consumer.get(), consumer_post_recv_task_comp_cb,
                                                              consumer_post_recv_task_err_cb, buffers.size() / 2));
       auto ctx = doca_comch_consumer_as_ctx(consumer.get());
-      doca_check(doca_ctx_set_state_changed_cb(ctx, state_change_cb));
+      doca_check(doca_ctx_set_state_changed_cb(ctx, default_state_change_cb));
       doca_check(doca_ctx_set_user_data(ctx, doca_data{.ptr = this}));
       doca_check(doca_pe_connect_ctx(consumer_pe.get(), ctx));
       doca_check(doca_ctx_start(ctx));
@@ -273,8 +277,9 @@ void DocaComch::start() {
   }
 
   doca_check(doca_pe_connect_ctx(pe.get(), ctx));
-  doca_check(doca_ctx_set_state_changed_cb(ctx, state_change_cb));
+
   if constexpr (side == Side::ServerSide) {
+    doca_check(doca_ctx_set_state_changed_cb(ctx, state_change_cb<side>));
     doca_check(doca_comch_server_task_send_set_conf(server.get(), send_task_comp_cb<side>, send_task_err_cb<side>, 64));
     doca_check(doca_comch_server_event_msg_recv_register(server.get(), msg_recv_cb<side>));
     doca_check(doca_comch_server_event_connection_status_changed_register(server.get(), connection_event_cb,
@@ -284,6 +289,7 @@ void DocaComch::start() {
     doca_check(doca_comch_server_set_max_msg_size(server.get(), max_msg_size));
     doca_check(doca_comch_server_set_recv_queue_size(server.get(), recv_queue_size));
   } else if constexpr (side == Side::ClientSide) {
+    doca_check(doca_ctx_set_state_changed_cb(ctx, state_change_cb<side>));
     doca_check(doca_comch_client_task_send_set_conf(client.get(), send_task_comp_cb<side>, send_task_err_cb<side>, 64));
     doca_check(doca_comch_client_event_msg_recv_register(client.get(), msg_recv_cb<side>));
     doca_check(
@@ -293,7 +299,9 @@ void DocaComch::start() {
   } else {
     static_unreachable;
   }
+
   doca_check(doca_ctx_set_user_data(ctx, doca_data{.ptr = this}));
+
   if constexpr (side == Side::ServerSide) {
     doca_check(doca_ctx_start(ctx));
   } else if constexpr (side == Side::ClientSide) {
@@ -310,6 +318,39 @@ inline void DocaComch::stop() {
     doca_check(doca_ctx_stop(doca_comch_server_as_ctx(server.get())));
   } else if (side == Side::ClientSide) {
     doca_check(doca_ctx_stop(doca_comch_client_as_ctx(client.get())));
+  }
+}
+
+template <Side side>
+void DocaComch::state_change_cb(const doca_data, doca_ctx *ctx, doca_ctx_states prev_state,
+                                doca_ctx_states next_state) {
+  auto comch = reinterpret_cast<DocaComch *>(ctx);
+  TRACE("State change: {} -> {}", prev_state, next_state);
+  if constexpr (side == Side::ClientSide) {
+    switch (next_state) {
+      case DOCA_CTX_STATE_IDLE: {
+      } break;
+      case DOCA_CTX_STATE_STARTING: {
+      } break;
+      case DOCA_CTX_STATE_RUNNING: {
+      } break;
+      case DOCA_CTX_STATE_STOPPING: {
+      } break;
+    }
+  } else if constexpr (side == Side::ServerSide) {
+    switch (next_state) {
+      case DOCA_CTX_STATE_IDLE: {
+      } break;
+      case DOCA_CTX_STATE_STARTING: {
+      } break;
+      case DOCA_CTX_STATE_RUNNING: {
+        doca_check(doca_comch_client_get_connection(comch->client.get(), &comch->connection));
+      } break;
+      case DOCA_CTX_STATE_STOPPING: {
+      } break;
+    }
+  } else {
+    static_unreachable;
   }
 }
 
@@ -330,6 +371,7 @@ inline void DocaComch::disconnection_event_cb(doca_comch_event_connection_status
   if (!success) {
     ERROR("Disconnection failure");
   }
+  TRACE("Disconnection ok");
 }
 
 template <Side side>
