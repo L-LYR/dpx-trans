@@ -74,9 +74,8 @@ class DocaComch {
  private:
   void progress_until(std::function<bool()> predictor) {
     while (!predictor()) {
-      if (!progress()) {
-        std::this_thread::sleep_for(1us);
-      }
+      progress();
+      std::this_thread::sleep_for(10000ns);
     }
   }
   bool progress() { return doca_pe_progress(pe.get()); }
