@@ -335,9 +335,9 @@ inline void DocaComch::stop() {
 }
 
 template <Side side>
-void DocaComch::state_change_cb(const doca_data, doca_ctx *ctx, doca_ctx_states prev_state,
+void DocaComch::state_change_cb(const doca_data ctx_user_data, doca_ctx *ctx, doca_ctx_states prev_state,
                                 doca_ctx_states next_state) {
-  auto comch = reinterpret_cast<DocaComch *>(ctx);
+  auto comch = reinterpret_cast<DocaComch *>(ctx_user_data.ptr);
   TRACE("{} state change: {} -> {}", side, prev_state, next_state);
   if constexpr (side == Side::ServerSide) {
     switch (next_state) {
