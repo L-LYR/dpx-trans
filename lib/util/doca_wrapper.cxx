@@ -68,6 +68,12 @@ uint32_t device_comch_max_msg_size(DocaDev &dev) {
   return size;
 }
 
+uint32_t device_comch_max_recv_queue_size(DocaDev &dev) {
+  uint32_t size = 0;
+  doca_check(doca_comch_cap_get_max_recv_queue_size(doca_dev_as_devinfo(dev.get()), &size));
+  return size;
+}
+
 uint32_t get_comch_consumer_id(DocaComchConsumer &consumer) {
   uint32_t id = 0;
   doca_check(doca_comch_consumer_get_id(consumer.get(), &id));

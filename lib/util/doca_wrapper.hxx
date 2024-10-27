@@ -15,6 +15,7 @@ DocaComchClient create_comch_client(DocaDev &dev, std::string_view name);
 DocaComchProducer create_comch_producer(DocaComchConnection connection);
 DocaPe create_pe();
 uint32_t device_comch_max_msg_size(DocaDev &dev);
+uint32_t device_comch_max_recv_queue_size(DocaDev &dev);
 uint32_t get_comch_consumer_id(DocaComchConsumer &consumer);
 DocaComchConsumer create_comch_consumer(DocaComchConnection connection, MmapBuffers &buffers);
 

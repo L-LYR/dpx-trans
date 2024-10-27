@@ -64,6 +64,7 @@ class DocaComch {
         client(create_comch_client(dev, name)),
         max_msg_size(device_comch_max_msg_size(dev)),
         recv_queue_size(32) {
+    dbg(device_comch_max_recv_queue_size(dev));
     start<Side::ClientSide>();
   }
 
