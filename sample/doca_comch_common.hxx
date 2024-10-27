@@ -311,6 +311,7 @@ void DocaComch::start() {
   }
 
   progress_until([this]() { return connection != nullptr; });
+  INFO("Started!");
 }
 
 inline void DocaComch::stop() {
@@ -325,7 +326,7 @@ template <Side side>
 void DocaComch::state_change_cb(const doca_data, doca_ctx *ctx, doca_ctx_states prev_state,
                                 doca_ctx_states next_state) {
   auto comch = reinterpret_cast<DocaComch *>(ctx);
-  TRACE("State change: {} -> {}", prev_state, next_state);
+  TRACE("{} state change: {} -> {}", side, prev_state, next_state);
   if constexpr (side == Side::ServerSide) {
     switch (next_state) {
       case DOCA_CTX_STATE_IDLE: {
