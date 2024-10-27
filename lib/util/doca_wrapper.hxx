@@ -23,7 +23,7 @@ DocaComchConsumer create_comch_consumer(DocaComchConnection connection, MmapBuff
 
 template <Side side>
 inline void *get_user_data_from_connection(DocaComchConnection c) {
-  doca_data user_data{.ptr = nullptr};
+  doca_data user_data(nullptr);
   if constexpr (side == Side::ServerSide) {
     doca_check(doca_ctx_get_user_data(doca_comch_server_as_ctx(doca_comch_server_get_server_ctx(c)), &user_data));
   } else if constexpr (side == Side::ClientSide) {

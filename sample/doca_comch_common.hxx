@@ -72,10 +72,11 @@ class DocaComch {
   ~DocaComch() { stop(); }
 
  private:
-  void progress_until(std::function<bool()> predictor) {
+  void progress_until(std::function<bool()> &&predictor) {
     while (!predictor()) {
-      progress();
-      std::this_thread::sleep_for(10000ns);
+      if (!progress()) {
+        std::this_thread::sleep_for(1us);
+      }
     }
   }
   bool progress() { return doca_pe_progress(pe.get()); }
@@ -99,7 +100,16 @@ class DocaComch {
   template <Side side>
   static void state_change_cb(const doca_data, doca_ctx *, doca_ctx_states, doca_ctx_states);
 
-  static void connection_event_cb(doca_comch_event_connection_status_changed *, doca_comch_connection *, uint8_t);
+  static void connection_event_cb(doca_comch_event_connection_status_changed *, doca_comch_connection *connection,
+                                  uint8_t success) {
+    if (!success) {
+      ERROR("Connection failure");
+      return;
+    }
+    auto comch = reinterpret_cast<DocaComch *>(get_user_data_from_connection<Side::ServerSide>(connection));
+    comch->connection = connection;
+    TRACE("Establish connection");
+  }
 
   static void disconnection_event_cb(doca_comch_event_connection_status_changed *, doca_comch_connection *, uint8_t);
 
@@ -352,17 +362,6 @@ void DocaComch::state_change_cb(const doca_data, doca_ctx *ctx, doca_ctx_states 
   } else {
     static_unreachable;
   }
-}
-
-inline void DocaComch::connection_event_cb(doca_comch_event_connection_status_changed *,
-                                           doca_comch_connection *connection, uint8_t success) {
-  if (!success) {
-    ERROR("Connection failure");
-    return;
-  }
-  auto comch = reinterpret_cast<DocaComch *>(get_user_data_from_connection<Side::ServerSide>(connection));
-  comch->connection = connection;
-  TRACE("Establish connection");
 }
 
 inline void DocaComch::disconnection_event_cb(doca_comch_event_connection_status_changed *,
