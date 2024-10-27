@@ -52,9 +52,8 @@ class DocaComch {
         dev_rep(open_doca_dev_rep(dev, dev_rep_pci_addr, DOCA_DEVINFO_REP_FILTER_NET)),
         pe(create_pe()),
         server(create_comch_server(dev, dev_rep, name)),
-        max_msg_size(comch_server_max_msg_size(dev)),
-        recv_queue_size(comch_server_recv_queue_size(server)) {
-    dbg(max_msg_size, recv_queue_size);
+        max_msg_size(device_comch_max_msg_size(dev)),
+        recv_queue_size(32) {
     start<Side::ServerSide>();
   }
   DocaComch(std::string name_, std::string dev_pci_addr)
@@ -63,9 +62,8 @@ class DocaComch {
         dev(open_doca_dev(dev_pci_addr)),
         pe(create_pe()),
         client(create_comch_client(dev, name)),
-        max_msg_size(comch_client_max_msg_size(client)),
-        recv_queue_size(comch_client_recv_queue_size(client)) {
-    dbg(max_msg_size, recv_queue_size);
+        max_msg_size(device_comch_max_msg_size(dev)),
+        recv_queue_size(32) {
     start<Side::ClientSide>();
   }
 
@@ -310,6 +308,8 @@ void DocaComch::start() {
   } else {
     static_unreachable;
   }
+
+  dbg(max_msg_size, recv_queue_size);
 
   doca_check(doca_ctx_set_user_data(ctx, doca_data(this)));
 

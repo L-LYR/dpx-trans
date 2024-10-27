@@ -62,27 +62,9 @@ DocaPe create_pe() {
   return DocaPe(pe);
 }
 
-uint32_t comch_server_max_msg_size(DocaDev &dev) {
+uint32_t device_comch_max_msg_size(DocaDev &dev) {
   uint32_t size = 0;
   doca_check(doca_comch_cap_get_max_msg_size(doca_dev_as_devinfo(dev.get()), &size));
-  return size;
-}
-
-uint32_t comch_server_recv_queue_size(DocaComchServer &server) {
-  uint32_t size = 0;
-  doca_check(doca_comch_server_get_recv_queue_size(server.get(), &size));
-  return size;
-}
-
-uint32_t comch_client_max_msg_size(DocaComchClient &client) {
-  uint32_t size = 0;
-  doca_check(doca_comch_client_get_max_msg_size(client.get(), &size));
-  return size;
-}
-
-uint32_t comch_client_recv_queue_size(DocaComchClient &client) {
-  uint32_t size = 0;
-  doca_check(doca_comch_client_get_recv_queue_size(client.get(), &size));
   return size;
 }
 
