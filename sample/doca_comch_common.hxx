@@ -157,7 +157,9 @@ class Endpoint : public EndpointBase {
       : comch(comch_),
         buffers(comch_.dev, n_qe * 2, max_payload_size),
         producer_pe(create_pe()),
-        consumer_pe(create_pe()) {}
+        consumer_pe(create_pe()),
+        producer(create_comch_producer(comch.connection)),
+        consumer(create_comch_consumer(comch.connection, buffers)) {}
   ~Endpoint() {}
 
   bool progress() {
@@ -224,7 +226,6 @@ class Connection : public ConnectionBase {
   static void establish(uint32_t remote_id, Endpoint &e) {
     e.conn = ConnectionPtr(new Connection(side, e.comch.name, get_comch_consumer_id(e.consumer), remote_id));
     TRACE("Connection {} <-> {} established.", e.conn->local_addr, e.conn->remote_addr);
-    e.prepare();
   }
 
  private:
@@ -267,9 +268,8 @@ class Connector : ConnectionHandleBase {
 
   void connect(Endpoint &e) {
     assert(e.idle());
+    e.prepare();
     comch.pending_endpoints.emplace_back(e);
-    e.producer = create_comch_producer(comch.connection);
-    e.consumer = create_comch_consumer(comch.connection, e.buffers);
     comch.progress_until([&e]() { return !e.idle(); });
   }
 
@@ -390,8 +390,7 @@ void DocaComch::new_consumer_cb(doca_comch_event_consumer *, doca_comch_connecti
   INFO("Consumer {} get", id);
   auto &e = comch->pending_endpoints.back().get();
   if constexpr (side == Side::ServerSide) {
-    e.producer = create_comch_producer(connection);
-    e.consumer = create_comch_consumer(connection, e.buffers);
+    e.prepare();
   }
   Connection::establish<side>(id, e);
   comch->pending_endpoints.pop_back();
