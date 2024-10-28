@@ -69,6 +69,10 @@ class DocaComch {
 
   ~DocaComch() { stop(); }
 
+  void wait_stop() {
+    progress_until([this]() { return connection == nullptr; });
+  }
+
  private:
   void progress_until(std::function<bool()> &&predictor) {
     while (!predictor()) {
