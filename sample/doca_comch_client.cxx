@@ -2,7 +2,7 @@
 
 #include "doca_comch_common.hxx"
 
-int main(int argc, char* argv[]) try {
+int main(int argc, char* argv[]) {
   spdlog::set_level(spdlog::level::trace);
 
   args::ArgumentParser p("Sample comch client");
@@ -27,10 +27,10 @@ int main(int argc, char* argv[]) try {
   DocaComch comch(args::get(server_name), args::get(dev_pci_address));
   Endpoint e(comch, 16, 1024);
   Connector c(comch);
-  c.connect(e);
+  INFO("connect");
+  c.connect(std::ref(e));
+  INFO("connected");
+  e.progress();
 
   return 0;
-} catch (const std::runtime_error& e) {
-  std::cerr << e.what() << std::endl;
-  return -2;
 }

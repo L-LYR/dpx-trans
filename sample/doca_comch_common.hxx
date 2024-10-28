@@ -159,7 +159,9 @@ class Endpoint : public EndpointBase {
         producer_pe(create_pe()),
         consumer_pe(create_pe()),
         producer(create_comch_producer(comch.connection)),
-        consumer(create_comch_consumer(comch.connection, buffers)) {}
+        consumer(create_comch_consumer(comch.connection, buffers)) {
+    INFO("started!!");
+  }
   ~Endpoint() { stop(); }
 
   bool progress() {
@@ -186,11 +188,14 @@ class Endpoint : public EndpointBase {
       doca_check(doca_ctx_set_state_changed_cb(ctx, default_state_change_cb));
       doca_check(doca_ctx_set_user_data(ctx, doca_data(this)));
       doca_check(doca_pe_connect_ctx(consumer_pe.get(), ctx));
-      doca_check(doca_ctx_start(ctx));
+      doca_check_ext(doca_ctx_start(ctx), DOCA_ERROR_IN_PROGRESS);
     }
   }
 
-  void prepare() { EndpointBase::prepare(); }
+  void prepare() {
+    INFO("???");
+    EndpointBase::prepare();
+  }
 
   void run() { EndpointBase::run(); }
 
@@ -268,11 +273,17 @@ class Connector : ConnectionHandleBase {
   Connector(DocaComch &comch_) : ConnectionHandleBase(Side::ClientSide), comch(comch_) {}
   ~Connector() = default;
 
-  void connect(Endpoint &e) {
+  void connect(EndpointRef &&endpoint) {
+    auto &e = endpoint.get();
     assert(e.idle());
     e.start();
-    comch.pending_endpoints.emplace_back(e);
-    comch.progress_until([this]() { return comch.pending_endpoints.empty(); });
+    comch.pending_endpoints.emplace_back(std::move(endpoint));
+    comch.progress_until([&e]() { return !e.idle(); });
+    if (!e.idle()) {
+      INFO("IDLE");
+    } else {
+      INFO("???");
+    }
   }
 
  private:
@@ -336,9 +347,9 @@ void DocaComch::start() {
 
 inline void DocaComch::stop() {
   if (side == Side::ServerSide) {
-    doca_check(doca_ctx_stop(doca_comch_server_as_ctx(server.get())));
+    doca_check_ext(doca_ctx_stop(doca_comch_server_as_ctx(server.get())), DOCA_ERROR_IN_PROGRESS);
   } else if (side == Side::ClientSide) {
-    doca_check(doca_ctx_stop(doca_comch_client_as_ctx(client.get())));
+    doca_check_ext(doca_ctx_stop(doca_comch_client_as_ctx(client.get())), DOCA_ERROR_IN_PROGRESS);
   }
 }
 
