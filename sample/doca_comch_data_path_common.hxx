@@ -159,12 +159,10 @@ class Acceptor : ConnectionHandleBase<Side::ServerSide> {
   Acceptor(ctrl_path::Endpoint<Side::ServerSide> &comch_) : comch(comch_) {}
   ~Acceptor() = default;
 
-  Acceptor &associate(EndpointRefs<Side::ServerSide> &&endpoints) {
-    for (auto &endpoint : endpoints) {
-      auto &e = endpoint.get();
-      assert(&e.comch == &comch);
-      comch.add_data_path_endpoint(e);
-      endpoints.emplace_back(e);
+  Acceptor &associate(EndpointRefs<Side::ServerSide> &&es) {
+    for (auto &e : es) {
+      comch.add_data_path_endpoint(e.get());
+      endpoints.emplace_back(std::move(e));
     }
     return *this;
   }
