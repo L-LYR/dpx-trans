@@ -1,8 +1,6 @@
 #include <args.hxx>
 
-#include "doca_comch_ctrl_common.hxx"
-
-using namespace ctrl_path;
+#include "doca_comch_data_path_common.hxx"
 
 int main(int argc, char* argv[]) {
   spdlog::set_level(spdlog::level::trace);
@@ -29,9 +27,14 @@ int main(int argc, char* argv[]) {
   }
 
   Device d(args::get(dev_pci_address), args::get(rep_pci_address), DOCA_DEVINFO_REP_FILTER_NET);
-  Endpoint<Side::ServerSide> e(args::get(server_name), d);
-  Acceptor a;
-  a.associate({e}).listen_and_accept();
+  ctrl_path::Endpoint<Side::ServerSide> cpe(args::get(server_name), d);
+  ctrl_path::Acceptor cpa;
+  cpa.associate({cpe}).listen_and_accept();
+
+  MmapBuffers buffers(d.dev, 16, 1024);
+  data_path::Endpoint<Side::ServerSide> dpe(cpe, std::move(buffers));
+  data_path::Acceptor dpa(cpe);
+  dpa.associate({dpe}).listen_and_accept();
 
   return 0;
 }

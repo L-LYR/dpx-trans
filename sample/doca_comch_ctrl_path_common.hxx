@@ -8,7 +8,6 @@
 #include "priv/common.hxx"
 #include "util/doca_wrapper.hxx"
 #include "util/doca_wrapper_def.hxx"
-#include "util/logger.hxx"
 #include "util/unreachable.hxx"
 
 using namespace std::chrono_literals;
@@ -18,26 +17,29 @@ namespace data_path {
 
 template <Side side>
 class Endpoint;
+template <Side side>
+using EndpointRef = std::reference_wrapper<Endpoint<side>>;
+template <Side side>
+using EndpointRefs = std::vector<EndpointRef<side>>;
+template <Side side>
+using Id2EndpointRef = std::unordered_map<uint32_t, EndpointRef<side>>;
 
-}
+}  // namespace data_path
 
 namespace ctrl_path {
 
 template <Side side>
 class Endpoint;
-
 template <Side side>
 using EndpointRef = std::reference_wrapper<Endpoint<side>>;
-
 template <Side side>
 using EndpointRefs = std::vector<EndpointRef<side>>;
 
-class Connection;
-using ConnectionPtr = std::unique_ptr<Connection>;
+}  // namespace ctrl_path
 
 class Device {
   template <Side side>
-  friend class Endpoint;
+  friend class ctrl_path::Endpoint;
 
  public:
   explicit Device(std::string_view dev_pci_addr) : dev(open_dev(dev_pci_addr)) {}
@@ -46,11 +48,12 @@ class Device {
       : dev(open_dev(dev_pci_addr)), rep(open_dev_rep(dev, dev_rep_pci_addr, filter)) {}
 
   ~Device() {}
-
- private:
+  // TODO make private
   DocaDev dev;
   DocaDevRep rep;
 };
+
+namespace ctrl_path {
 
 template <Side side>
 class Endpoint : public EndpointBase {
@@ -78,6 +81,11 @@ class Endpoint : public EndpointBase {
         recv_queue_size(32) {}
   ~Endpoint() { close(); }
 
+  void add_data_path_endpoint(data_path::EndpointRef<side> &&e) {
+    assert(running());
+    pending_endpoints.emplace_back(e);
+  }
+
  private:
   void progress_until(std::function<bool()> &&predictor) {
     while (!predictor()) {
@@ -102,20 +110,7 @@ class Endpoint : public EndpointBase {
   // endpoint from Idle to Ready, endpoint is ready to establish connection
   void prepare();
 
-  void close() {
-    if (stopped()) {
-      return;
-    }
-    if constexpr (side == Side::ServerSide) {
-      progress_until([this]() { return conn == nullptr; });  // wait for remote to disconnection
-      doca_check_ext(doca_ctx_stop(as_doca_context()), DOCA_ERROR_IN_PROGRESS);
-    } else if constexpr (side == Side::ClientSide) {
-      doca_check_ext(doca_ctx_stop(as_doca_context()), DOCA_ERROR_IN_PROGRESS);
-    } else {
-      static_unreachable;
-    }
-    progress_until([this]() { return stopped(); });
-  }
+  void close();
 
   static void state_change_cb(const doca_data ctx_user_data, doca_ctx *, doca_ctx_states prev_state,
                               doca_ctx_states next_state);
@@ -146,6 +141,10 @@ class Endpoint : public EndpointBase {
   uint32_t max_msg_size = 0;
   uint32_t recv_queue_size = 0;
   ComchConnection conn = nullptr;
+
+  // for data path usage
+  data_path::EndpointRefs<side> pending_endpoints;
+  data_path::Id2EndpointRef<side> established_endpoints;
 };
 
 class Acceptor : ConnectionHandleBase<Side::ServerSide> {
@@ -175,6 +174,7 @@ class Acceptor : ConnectionHandleBase<Side::ServerSide> {
       }
       std::this_thread::sleep_for(10us);
     }
+    endpoints.clear();
   }
 
  private:
@@ -190,6 +190,28 @@ class Connector : ConnectionHandleBase<Side::ClientSide> {
     e.progress_until([&e] { return e.running(); });
   }
 };
+
+}  // namespace ctrl_path
+
+#include "doca_comch_data_path_common.hxx"
+
+namespace ctrl_path {
+
+template <Side side>
+void Endpoint<side>::close() {
+  if (stopped()) {
+    return;
+  }
+  if constexpr (side == Side::ServerSide) {
+    progress_until([this]() { return conn == nullptr; });  // wait for remote to disconnection
+    doca_check_ext(doca_ctx_stop(as_doca_context()), DOCA_ERROR_IN_PROGRESS);
+  } else if constexpr (side == Side::ClientSide) {
+    doca_check_ext(doca_ctx_stop(as_doca_context()), DOCA_ERROR_IN_PROGRESS);
+  } else {
+    static_unreachable;
+  }
+  progress_until([this]() { return stopped(); });
+}
 
 template <Side side>
 void Endpoint<side>::prepare() {
@@ -289,46 +311,43 @@ void Endpoint<side>::disconnection_event_cb(doca_comch_event_connection_status_c
 
 template <Side side>
 void Endpoint<side>::new_consumer_cb(doca_comch_event_consumer *, doca_comch_connection *connection, uint32_t id) {
-  auto e = reinterpret_cast<Endpoint *>(get_user_data_from_connection<side>(connection));
-  // assert(connection == comch->connection);
-  // assert(!comch->pending_endpoints.empty());
-  // INFO("Consumer {} get", id);
-  // auto &e = comch->pending_endpoints.back().get();
-  // if constexpr (side == Side::ServerSide) {
-  //   e.start();
-  // }
-  // Connection::establish<side>(id, e);
-  // comch->pending_endpoints.pop_back();
-  // comch->established_endpoints.emplace(id, e);
+  auto endpoint = reinterpret_cast<Endpoint *>(get_user_data_from_connection<side>(connection));
+  assert(connection == endpoint->conn);
+  assert(!endpoint->pending_endpoints.empty());
+  INFO("Consumer {} get", id);
+  auto &data_path_endpoint = endpoint->pending_endpoints.back().get();
+  data_path_endpoint.run();
+  endpoint->pending_endpoints.pop_back();
+  endpoint->established_endpoints.emplace(id, data_path_endpoint);
 }
 
 template <Side side>
 void Endpoint<side>::expired_consumer_cb(doca_comch_event_consumer *, doca_comch_connection *connection, uint32_t id) {
-  auto e = reinterpret_cast<Endpoint *>(get_user_data_from_connection<side>(connection));
-  //   INFO("Consumer {} expired", id);
-  //   auto iter = comch->established_endpoints.find(id);
-  //   assert(iter != comch->established_endpoints.end());
-  //   iter->second.get().stop();
-  //   comch->established_endpoints.erase(iter);
+  auto endpoint = reinterpret_cast<Endpoint *>(get_user_data_from_connection<side>(connection));
+  INFO("Consumer {} expired", id);
+  auto iter = endpoint->established_endpoints.find(id);
+  assert(iter != endpoint->established_endpoints.end());
+  iter->second.get().stop();
+  endpoint->established_endpoints.erase(iter);
 }
 
 template <Side side>
-void Endpoint<side>::send_task_comp_cb(doca_comch_task_send *task, doca_data task_user_data, doca_data ctx_user_data) {
-  auto e = reinterpret_cast<Endpoint *>(ctx_user_data.ptr);
+void Endpoint<side>::send_task_comp_cb(doca_comch_task_send *task, doca_data, doca_data ctx_user_data) {
+  [[maybe_unused]] auto e = reinterpret_cast<Endpoint *>(ctx_user_data.ptr);
   INFO("Task send done!");
   doca_task_free(doca_comch_task_send_as_task(task));
 }
 
 template <Side side>
-void Endpoint<side>::send_task_err_cb(doca_comch_task_send *task, doca_data task_user_data, doca_data ctx_user_data) {
-  auto e = reinterpret_cast<Endpoint *>(ctx_user_data.ptr);
+void Endpoint<side>::send_task_err_cb(doca_comch_task_send *task, doca_data, doca_data ctx_user_data) {
+  [[maybe_unused]] auto e = reinterpret_cast<Endpoint *>(ctx_user_data.ptr);
   ERROR("Task send failed!");
   doca_task_free(doca_comch_task_send_as_task(task));
 }
 
 template <Side side>
-void Endpoint<side>::msg_recv_cb(struct doca_comch_event_msg_recv *, uint8_t *recv_buffer, uint32_t msg_len,
-                                 struct doca_comch_connection *connection) {
+void Endpoint<side>::msg_recv_cb(struct doca_comch_event_msg_recv *, uint8_t *, uint32_t,
+                                 struct doca_comch_connection *) {
   INFO("Message received!");
 }
 

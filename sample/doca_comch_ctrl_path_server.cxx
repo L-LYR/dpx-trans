@@ -1,6 +1,8 @@
 #include <args.hxx>
 
-#include "doca_comch_common.hxx"
+#include "doca_comch_ctrl_path_common.hxx"
+
+using namespace ctrl_path;
 
 int main(int argc, char* argv[]) {
   spdlog::set_level(spdlog::level::trace);
@@ -26,11 +28,10 @@ int main(int argc, char* argv[]) {
     return -1;
   }
 
-  // DocaComch comch(args::get(server_name), args::get(dev_pci_address), args::get(rep_pci_address));
-  // Endpoint e(comch, 16, 1024);
-  // Acceptor a(comch);
-  // a.associate({e}).listen_and_accept();
-  // e.progress();
+  Device d(args::get(dev_pci_address), args::get(rep_pci_address), DOCA_DEVINFO_REP_FILTER_NET);
+  Endpoint<Side::ServerSide> e(args::get(server_name), d);
+  Acceptor a;
+  a.associate({e}).listen_and_accept();
 
   return 0;
 }
