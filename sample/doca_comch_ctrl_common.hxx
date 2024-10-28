@@ -254,6 +254,7 @@ void Endpoint<side>::connection_event_cb(doca_comch_event_connection_status_chan
   auto e = reinterpret_cast<Endpoint *>(get_user_data_from_connection<Side::ServerSide>(connection));
   if (e->conn == nullptr) {
     e->conn = connection;
+    e->run();
     TRACE("Establish connection");
   } else {
     WARN("Another connection, ignore");
