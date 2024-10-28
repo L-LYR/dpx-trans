@@ -99,16 +99,7 @@ class DocaComch {
   template <Side side>
   static void state_change_cb(const doca_data, doca_ctx *, doca_ctx_states, doca_ctx_states);
 
-  static void connection_event_cb(doca_comch_event_connection_status_changed *, doca_comch_connection *connection,
-                                  uint8_t success) {
-    if (!success) {
-      ERROR("Connection failure");
-      return;
-    }
-    auto comch = reinterpret_cast<DocaComch *>(get_user_data_from_connection<Side::ServerSide>(connection));
-    comch->connection = connection;
-    TRACE("Establish connection");
-  }
+  static void connection_event_cb(doca_comch_event_connection_status_changed *, doca_comch_connection *, uint8_t);
 
   static void disconnection_event_cb(doca_comch_event_connection_status_changed *, doca_comch_connection *, uint8_t);
 
@@ -337,11 +328,12 @@ void DocaComch::start() {
 }
 
 inline void DocaComch::stop() {
-  progress_until([this]() { return connection == nullptr; });
   if (side == Side::ServerSide) {
+    progress_until([this]() { return connection == nullptr; });
     doca_check_ext(doca_ctx_stop(doca_comch_server_as_ctx(server.get())), DOCA_ERROR_IN_PROGRESS);
   } else if (side == Side::ClientSide) {
     doca_check_ext(doca_ctx_stop(doca_comch_client_as_ctx(client.get())), DOCA_ERROR_IN_PROGRESS);
+    progress_until([this]() { return connection == nullptr; });
   }
 }
 
@@ -352,6 +344,9 @@ void DocaComch::state_change_cb(const doca_data ctx_user_data, doca_ctx *, doca_
   TRACE("{} state change: {} -> {}", side, prev_state, next_state);
   switch (next_state) {
     case DOCA_CTX_STATE_IDLE: {
+      if constexpr (side == Side::ClientSide) {
+        comch->connection = nullptr;
+      }
     } break;
     case DOCA_CTX_STATE_STARTING: {
     } break;
@@ -361,18 +356,40 @@ void DocaComch::state_change_cb(const doca_data ctx_user_data, doca_ctx *, doca_
       }
     } break;
     case DOCA_CTX_STATE_STOPPING: {
-      comch->connection = nullptr;
+      // TODO may do something, like waiting for alive endpoints to stop
     } break;
+  }
+}
+
+inline void DocaComch::connection_event_cb(doca_comch_event_connection_status_changed *,
+                                           doca_comch_connection *connection, uint8_t success) {
+  if (!success) {
+    ERROR("Connection failure");
+    return;
+  }
+  auto comch = reinterpret_cast<DocaComch *>(get_user_data_from_connection<Side::ServerSide>(connection));
+  if (comch->connection == nullptr) {
+    comch->connection = connection;
+    TRACE("Establish connection");
+  } else {
+    WARN("Another connection, ignore");
   }
 }
 
 inline void DocaComch::disconnection_event_cb(doca_comch_event_connection_status_changed *,
                                               doca_comch_connection *connection, uint8_t success) {
-  [[maybe_unused]] auto comch = get_user_data_from_connection<Side::ServerSide>(connection);
   if (!success) {
     ERROR("Disconnection failure");
+    return;
   }
-  TRACE("Disconnection ok");
+  auto comch = reinterpret_cast<DocaComch *>(get_user_data_from_connection<Side::ServerSide>(connection));
+  if (connection == comch->connection) {
+    comch->connection = nullptr;
+    comch->stop();
+    TRACE("Disconnection ok");
+  } else {
+    WARN("Ignored connection, skip");
+  }
 }
 
 template <Side side>

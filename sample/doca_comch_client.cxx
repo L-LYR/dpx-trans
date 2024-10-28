@@ -25,10 +25,10 @@ int main(int argc, char* argv[]) {
   }
 
   DocaComch comch(args::get(server_name), args::get(dev_pci_address));
-  Endpoint e(comch, 16, 1024);
-  Connector c(comch);
-  c.connect(e);
-  e.progress();
+  // Endpoint e(comch, 16, 1024);
+  // Connector c(comch);
+  // c.connect(e);
+  // e.progress();
 
   return 0;
 }
