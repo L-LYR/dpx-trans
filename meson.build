@@ -28,7 +28,7 @@ if get_option('buildtype') == 'release'
     c_cpp_extra_args += '-DSPDLOG_ACTIVE_LEVEL=SPDLOG_LEVEL_INFO'
 else
     c_cpp_extra_args += '-DSPDLOG_ACTIVE_LEVEL=SPDLOG_LEVEL_TRACE'
-    # c_cpp_extra_args += '-DENABLE_CHECK_FOOTPRINT'
+    c_cpp_extra_args += '-DENABLE_CHECK_FOOTPRINT'
 endif
 
 add_project_arguments(cpp_extra_args, language: ['cpp'])

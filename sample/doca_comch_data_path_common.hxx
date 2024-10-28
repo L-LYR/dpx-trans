@@ -40,7 +40,6 @@ class Endpoint : public EndpointBase {
         consumer(create_comch_consumer(comch.conn, buffers)) {}
   ~Endpoint() { close(); }
 
- private:
   void progress_until(std::function<bool()> &&predictor) {
     while (!predictor()) {
       if (!progress()) {
@@ -50,12 +49,12 @@ class Endpoint : public EndpointBase {
   }
 
   bool progress() {
-    auto p0 = comch.progress();
     auto p1 = doca_pe_progress(producer_pe.get());
     auto p2 = doca_pe_progress(consumer_pe.get());
-    return p0 || p1 > 0 || p2 > 0;
+    return p1 > 0 || p2 > 0;
   }
 
+ private:
   doca_ctx *producer_as_doca_ctx() { return doca_comch_producer_as_ctx(producer.get()); }
   doca_ctx *consumer_as_doca_ctx() { return doca_comch_consumer_as_ctx(consumer.get()); }
 
@@ -170,6 +169,7 @@ class Acceptor : ConnectionHandleBase<Side::ServerSide> {
 
   void listen_and_accept() {
     while (true) {
+      comch.progress();
       bool all_running = true;
       for (auto &endpoint : endpoints) {
         auto &e = endpoint.get();
@@ -181,7 +181,6 @@ class Acceptor : ConnectionHandleBase<Side::ServerSide> {
       if (all_running) {
         break;
       }
-      std::this_thread::sleep_for(1us);
     }
     endpoints.clear();
   }
@@ -202,7 +201,10 @@ class Connector : ConnectionHandleBase<Side::ClientSide> {
     assert(&e.comch == &comch);
     e.prepare();
     comch.add_data_path_endpoint(e);
-    e.progress_until([&e]() { return e.running(); });
+    while (!e.running()) {
+      comch.progress();
+      e.progress();
+    }
   }
 
  private:

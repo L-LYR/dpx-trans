@@ -86,7 +86,6 @@ class Endpoint : public EndpointBase {
     pending_endpoints.emplace_back(e);
   }
 
- private:
   void progress_until(std::function<bool()> &&predictor) {
     while (!predictor()) {
       if (!progress()) {
@@ -97,6 +96,7 @@ class Endpoint : public EndpointBase {
 
   bool progress() { return doca_pe_progress(pe.get()); }
 
+ private:
   doca_ctx *as_doca_context() {
     if constexpr (side == Side::ServerSide) {
       return doca_comch_server_as_ctx(comch.get());
@@ -318,6 +318,8 @@ void Endpoint<side>::new_consumer_cb(doca_comch_event_consumer *, doca_comch_con
   auto &data_path_endpoint = endpoint->pending_endpoints.back().get();
   if constexpr (side == Side::ServerSide) {
     data_path_endpoint.prepare();
+  } else if constexpr (side == Side::ClientSide) {
+    data_path_endpoint.run();
   }
   endpoint->pending_endpoints.pop_back();
   endpoint->established_endpoints.emplace(id, data_path_endpoint);
