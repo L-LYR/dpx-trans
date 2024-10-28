@@ -332,7 +332,7 @@ inline void DocaComch::stop() {
   if (side == Side::ServerSide) {
     progress_until([this]() { return connection == nullptr; });  // wait for remote to disconnection
     doca_check_ext(doca_ctx_stop(doca_comch_server_as_ctx(server.get())), DOCA_ERROR_IN_PROGRESS);
-    progress_until([this]() { return false; });
+    progress();
   } else if (side == Side::ClientSide) {
     doca_check_ext(doca_ctx_stop(doca_comch_client_as_ctx(client.get())), DOCA_ERROR_IN_PROGRESS);
     progress_until([this]() { return connection == nullptr; });
