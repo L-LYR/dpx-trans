@@ -36,5 +36,7 @@ int main(int argc, char* argv[]) {
   data_path::Acceptor dpa(cpe);
   dpa.associate({dpe}).listen_and_accept();
 
+  std::this_thread::sleep_for(10s);
+
   return 0;
 }

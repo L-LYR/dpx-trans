@@ -316,7 +316,9 @@ void Endpoint<side>::new_consumer_cb(doca_comch_event_consumer *, doca_comch_con
   assert(!endpoint->pending_endpoints.empty());
   INFO("Consumer {} get", id);
   auto &data_path_endpoint = endpoint->pending_endpoints.back().get();
-  data_path_endpoint.run();
+  if constexpr (side == Side::ServerSide) {
+    data_path_endpoint.prepare();
+  }
   endpoint->pending_endpoints.pop_back();
   endpoint->established_endpoints.emplace(id, data_path_endpoint);
 }
