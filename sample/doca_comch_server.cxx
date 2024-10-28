@@ -30,6 +30,7 @@ int main(int argc, char* argv[]) {
   Endpoint e(comch, 16, 1024);
   Acceptor a(comch);
   a.associate({e}).listen_and_accept();
+  e.progress();
 
   return 0;
 }

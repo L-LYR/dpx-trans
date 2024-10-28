@@ -27,9 +27,7 @@ int main(int argc, char* argv[]) {
   DocaComch comch(args::get(server_name), args::get(dev_pci_address));
   Endpoint e(comch, 16, 1024);
   Connector c(comch);
-  INFO("connect");
-  c.connect(std::ref(e));
-  INFO("connected");
+  c.connect(e);
   e.progress();
 
   return 0;

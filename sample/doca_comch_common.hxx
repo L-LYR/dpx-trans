@@ -192,10 +192,7 @@ class Endpoint : public EndpointBase {
     }
   }
 
-  void prepare() {
-    INFO("???");
-    EndpointBase::prepare();
-  }
+  void prepare() { EndpointBase::prepare(); }
 
   void run() { EndpointBase::run(); }
 
@@ -273,17 +270,11 @@ class Connector : ConnectionHandleBase {
   Connector(DocaComch &comch_) : ConnectionHandleBase(Side::ClientSide), comch(comch_) {}
   ~Connector() = default;
 
-  void connect(EndpointRef &&endpoint) {
-    auto &e = endpoint.get();
+  void connect(Endpoint &e) {
     assert(e.idle());
     e.start();
-    comch.pending_endpoints.emplace_back(std::move(endpoint));
+    comch.pending_endpoints.emplace_back(e);
     comch.progress_until([&e]() { return !e.idle(); });
-    if (!e.idle()) {
-      INFO("IDLE");
-    } else {
-      INFO("???");
-    }
   }
 
  private:

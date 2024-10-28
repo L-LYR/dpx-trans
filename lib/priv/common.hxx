@@ -89,3 +89,20 @@ struct std::formatter<Side> : std::formatter<const char*> {
     }
   }
 };
+
+template <>
+struct std::formatter<Status> : std::formatter<const char*> {
+  template <typename Context>
+  Context::iterator format(Status s, Context out) const {
+    switch (s) {
+      case Status::Idle:
+        return std::formatter<const char*>::format("Idle", out);
+      case Status::Ready:
+        return std::formatter<const char*>::format("Ready", out);
+      case Status::Running:
+        return std::formatter<const char*>::format("Running", out);
+      case Status::Stopped:
+        return std::formatter<const char*>::format("Stopped", out);
+    }
+  }
+};
