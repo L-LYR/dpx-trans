@@ -65,7 +65,7 @@ class Endpoint : public EndpointBase {
         comch(create_comch_client(dev.dev, name)),
         max_msg_size(device_comch_max_msg_size(dev.dev)),
         recv_queue_size(32) {}
-  ~Endpoint() { stop(); }
+  ~Endpoint() { close(); }
 
   void wait_stop() {
     progress_until([this]() { return conn == nullptr; });
@@ -95,17 +95,19 @@ class Endpoint : public EndpointBase {
   // endpoint from Idle to Ready, endpoint is ready to establish connection
   void prepare();
 
-  void run() { EndpointBase::run(); }
-
-  void stop() {
-    if (side == Side::ServerSide) {
+  void close() {
+    if (stopped()) {
+      return;
+    }
+    if constexpr (side == Side::ServerSide) {
       progress_until([this]() { return conn == nullptr; });  // wait for remote to disconnection
       doca_check_ext(doca_ctx_stop(as_doca_context()), DOCA_ERROR_IN_PROGRESS);
-    } else if (side == Side::ClientSide) {
+    } else if constexpr (side == Side::ClientSide) {
       doca_check_ext(doca_ctx_stop(as_doca_context()), DOCA_ERROR_IN_PROGRESS);
-      progress_until([this]() { return conn == nullptr; });
+    } else {
+      static_unreachable;
     }
-    EndpointBase::stop();
+    progress_until([this]() { return stopped(); });
   }
 
   static void state_change_cb(const doca_data ctx_user_data, doca_ctx *, doca_ctx_states prev_state,
@@ -135,28 +137,6 @@ class Endpoint : public EndpointBase {
   ComchType comch;
   uint32_t max_msg_size = 0;
   uint32_t recv_queue_size = 0;
-  ConnectionPtr conn;
-};
-
-class Connection : public ConnectionBase {
-  template <Side side>
-  friend class Endpoint;
-
-  friend class Acceptor;
-  friend class Connector;
-
- public:
-  ~Connection() {}
-
- private:
-  Connection(Side side_, ComchConnection conn_) : ConnectionBase(side_), conn(conn_) {}
-
-  template <Side side>
-  static void establish(ComchConnection conn, Endpoint<side> &e) {
-    e.conn = ConnectionPtr(new Connection(side, conn));
-    e.run();
-  }
-
   ComchConnection conn;
 };
 
@@ -245,16 +225,16 @@ void Endpoint<side>::state_change_cb(const doca_data ctx_user_data, doca_ctx *, 
   switch (next_state) {
     case DOCA_CTX_STATE_IDLE: {
       if constexpr (side == Side::ClientSide) {
-        e->conn.release();
+        e->conn = nullptr;
       }
+      e->stop();
     } break;
     case DOCA_CTX_STATE_STARTING: {
     } break;
     case DOCA_CTX_STATE_RUNNING: {
       if constexpr (side == Side::ClientSide) {
-        ComchConnection connection;
-        doca_check(doca_comch_client_get_connection(e->comch.get(), &connection));
-        Connection::establish(connection, *e);
+        doca_check(doca_comch_client_get_connection(e->comch.get(), &e->conn));
+        e->run();
       }
     } break;
     case DOCA_CTX_STATE_STOPPING: {
@@ -273,7 +253,7 @@ void Endpoint<side>::connection_event_cb(doca_comch_event_connection_status_chan
   }
   auto e = reinterpret_cast<Endpoint *>(get_user_data_from_connection<Side::ServerSide>(connection));
   if (e->conn == nullptr) {
-    Connection::establish(connection, *e);
+    e->conn = connection;
     TRACE("Establish connection");
   } else {
     WARN("Another connection, ignore");
@@ -290,8 +270,8 @@ void Endpoint<side>::disconnection_event_cb(doca_comch_event_connection_status_c
     return;
   }
   auto e = reinterpret_cast<Endpoint *>(get_user_data_from_connection<Side::ServerSide>(connection));
-  if (e->conn.get()->conn == connection) {
-    e->conn.release();
+  if (e->conn == connection) {
+    e->conn = nullptr;
     TRACE("Disconnection ok");
   } else {
     WARN("Ignored connection, skip");
