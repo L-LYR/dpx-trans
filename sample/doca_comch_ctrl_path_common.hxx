@@ -155,7 +155,7 @@ class Acceptor : ConnectionHandleBase<Side::ServerSide> {
     // drive endpoints_ from idle to running, server side do not has starting
     for (auto &e : es) {
       e.get().prepare();
-      endpoints.emplace_back(std::move(e));
+      endpoints.emplace_back(e);
     }
     return *this;
   }

@@ -147,7 +147,7 @@ class Acceptor : ConnectionHandleBase<Side::ServerSide> {
       assert(&e.comch == &comch);
       e.prepare();
       comch.add_data_path_endpoint(e);
-      endpoints.push_back(std::move(endpoint));
+      endpoints.emplace_back(e);
     }
     return *this;
   }
