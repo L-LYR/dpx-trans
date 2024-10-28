@@ -4,7 +4,7 @@
 
 namespace doca_wrapper {
 
-DocaDev open_doca_dev(std::string_view pci_addr) {
+DocaDev open_dev(std::string_view pci_addr) {
   doca_devinfo **dev_list;
   uint32_t n_devs = 0;
   doca_check(doca_devinfo_create_list(&dev_list, &n_devs));
@@ -21,7 +21,7 @@ DocaDev open_doca_dev(std::string_view pci_addr) {
   die("Device {} not found", pci_addr);
 }
 
-DocaDevRep open_doca_dev_rep(DocaDev &dev, std::string_view pci_addr, enum doca_devinfo_rep_filter filter) {
+DocaDevRep open_dev_rep(DocaDev &dev, std::string_view pci_addr, doca_devinfo_rep_filter filter) {
   uint32_t n_dev_reps = 0;
   doca_devinfo_rep **dev_rep_list = nullptr;
   doca_check(doca_devinfo_rep_create_list(dev.get(), filter, &dev_rep_list, &n_dev_reps));
@@ -38,28 +38,28 @@ DocaDevRep open_doca_dev_rep(DocaDev &dev, std::string_view pci_addr, enum doca_
   die("Device representor {} not found", pci_addr);
 }
 
-DocaComchServer create_comch_server(DocaDev &dev, DocaDevRep &dev_rep, std::string_view name) {
+ComchServer create_comch_server(DocaDev &dev, DocaDevRep &dev_rep, std::string_view name) {
   doca_comch_server *server = nullptr;
   doca_check(doca_comch_server_create(dev.get(), dev_rep.get(), name.data(), &server));
-  return DocaComchServer(server);
+  return ComchServer(server);
 }
 
-DocaComchClient create_comch_client(DocaDev &dev, std::string_view name) {
+ComchClient create_comch_client(DocaDev &dev, std::string_view name) {
   doca_comch_client *client = nullptr;
   doca_check(doca_comch_client_create(dev.get(), name.data(), &client));
-  return DocaComchClient(client);
+  return ComchClient(client);
 }
 
-DocaComchProducer create_comch_producer(DocaComchConnection connection) {
+DocaComchProducer create_comch_producer(ComchConnection connection) {
   doca_comch_producer *producer = nullptr;
   doca_check(doca_comch_producer_create(connection, &producer));
   return DocaComchProducer(producer);
 }
 
-DocaPe create_pe() {
+Pe create_pe() {
   doca_pe *pe = nullptr;
   doca_check(doca_pe_create(&pe));
-  return DocaPe(pe);
+  return Pe(pe);
 }
 
 uint32_t device_comch_max_msg_size(DocaDev &dev) {
@@ -80,7 +80,7 @@ uint32_t get_comch_consumer_id(DocaComchConsumer &consumer) {
   return id;
 }
 
-DocaComchConsumer create_comch_consumer(DocaComchConnection connection, MmapBuffers &buffers) {
+DocaComchConsumer create_comch_consumer(ComchConnection connection, MmapBuffers &buffers) {
   doca_comch_consumer *consumer = nullptr;
   doca_check(doca_comch_consumer_create(connection, buffers.underlying(), &consumer));
   return DocaComchConsumer(consumer);

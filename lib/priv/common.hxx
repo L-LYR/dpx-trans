@@ -39,7 +39,10 @@ class EndpointBase : Noncopyable, Nonmovable {
     assert(ready());
     s = Status::Running;
   }
-  void stop() { s = Status::Stopped; }
+  void stop() {
+    assert(running());
+    s = Status::Stopped;
+  }
 
   Status s;
 };
@@ -56,14 +59,13 @@ class ConnectionBase : Noncopyable, Nonmovable {
   std::string local_addr = "";
 };
 
+template <Side side>
 class ConnectionHandleBase : Noncopyable, Nonmovable {
  public:
   ~ConnectionHandleBase() = default;
 
  protected:
-  ConnectionHandleBase(Side side_) : side(side_) {}
-
-  Side side;
+  ConnectionHandleBase() = default;
 };
 
 #ifdef USE_TCP
@@ -83,9 +85,9 @@ struct std::formatter<Side> : std::formatter<const char*> {
   Context::iterator format(Side s, Context out) const {
     switch (s) {
       case Side::ServerSide:
-        return std::formatter<const char*>::format("Server", out);
+        return std::formatter<const char*>::format("server", out);
       case Side::ClientSide:
-        return std::formatter<const char*>::format("Client", out);
+        return std::formatter<const char*>::format("client", out);
     }
   }
 };
@@ -96,13 +98,13 @@ struct std::formatter<Status> : std::formatter<const char*> {
   Context::iterator format(Status s, Context out) const {
     switch (s) {
       case Status::Idle:
-        return std::formatter<const char*>::format("Idle", out);
+        return std::formatter<const char*>::format("idle", out);
       case Status::Ready:
-        return std::formatter<const char*>::format("Ready", out);
+        return std::formatter<const char*>::format("ready", out);
       case Status::Running:
-        return std::formatter<const char*>::format("Running", out);
+        return std::formatter<const char*>::format("running", out);
       case Status::Stopped:
-        return std::formatter<const char*>::format("Stopped", out);
+        return std::formatter<const char*>::format("stopped", out);
     }
   }
 };

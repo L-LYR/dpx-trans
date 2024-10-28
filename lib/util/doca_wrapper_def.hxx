@@ -21,22 +21,22 @@ struct DocaDevRepDeleter {
 };
 using DocaDevRep = std::unique_ptr<doca_dev_rep, DocaDevRepDeleter>;
 
-struct DocaPeDeleter {
+struct PeDeleter {
   void operator()(doca_pe *p) const { doca_check(doca_pe_destroy(p)); }
 };
-using DocaPe = std::unique_ptr<doca_pe, DocaPeDeleter>;
+using Pe = std::unique_ptr<doca_pe, PeDeleter>;
 
-struct DocaComchServerDeleter {
+struct ComchServerDeleter {
   void operator()(doca_comch_server *p) const { doca_check(doca_comch_server_destroy(p)); }
 };
-using DocaComchServer = std::unique_ptr<doca_comch_server, DocaComchServerDeleter>;
+using ComchServer = std::unique_ptr<doca_comch_server, ComchServerDeleter>;
 
-struct DocaComchClientDeleter {
+struct ComchClientDeleter {
   void operator()(doca_comch_client *p) const { doca_check(doca_comch_client_destroy(p)); }
 };
-using DocaComchClient = std::unique_ptr<doca_comch_client, DocaComchClientDeleter>;
+using ComchClient = std::unique_ptr<doca_comch_client, ComchClientDeleter>;
 
-using DocaComchConnection = doca_comch_connection *;
+using ComchConnection = doca_comch_connection *;
 
 struct DocaComchConsumerDeleter {
   void operator()(doca_comch_consumer *p) const { doca_check(doca_comch_consumer_destroy(p)); }
@@ -47,3 +47,20 @@ struct DocaComchProducerDeleter {
   void operator()(doca_comch_producer *p) const { doca_check(doca_comch_producer_destroy(p)); }
 };
 using DocaComchProducer = std::unique_ptr<doca_comch_producer, DocaComchProducerDeleter>;
+
+template <>
+struct std::formatter<doca_ctx_states> : std::formatter<const char *> {
+  template <typename Context>
+  Context::iterator format(doca_ctx_states s, Context out) const {
+    switch (s) {
+      case DOCA_CTX_STATE_IDLE:
+        return std::formatter<const char *>::format("Idle", out);
+      case DOCA_CTX_STATE_STARTING:
+        return std::formatter<const char *>::format("Starting", out);
+      case DOCA_CTX_STATE_RUNNING:
+        return std::formatter<const char *>::format("Running", out);
+      case DOCA_CTX_STATE_STOPPING:
+        return std::formatter<const char *>::format("Stopping", out);
+    }
+  }
+};

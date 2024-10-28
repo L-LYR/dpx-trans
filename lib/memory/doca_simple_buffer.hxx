@@ -53,7 +53,7 @@ inline std::pair<uint8_t*, size_t> doca_buf_head(doca_buf* buf) {
   return {reinterpret_cast<uint8_t*>(head), reinterpret_cast<uint8_t*>(data) - reinterpret_cast<uint8_t*>(head)};
 }
 
-DocaComchConsumer create_comch_consumer(DocaComchConnection connection, MmapBuffers& buffers);
+DocaComchConsumer create_comch_consumer(ComchConnection connection, MmapBuffers& buffers);
 
 }  // namespace doca_wrapper
 
@@ -123,7 +123,7 @@ class MmapBuffers : Noncopyable {
  private:
   doca_mmap* underlying() { return mmap; }
 
-  friend DocaComchConsumer doca_wrapper::create_comch_consumer(DocaComchConnection, MmapBuffers&);
+  friend DocaComchConsumer doca_wrapper::create_comch_consumer(ComchConnection, MmapBuffers&);
 
   size_t total_len = -1;
   size_t piece_len = -1;
