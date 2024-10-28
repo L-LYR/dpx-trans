@@ -160,16 +160,7 @@ class Endpoint : public EndpointBase {
         consumer_pe(create_pe()),
         producer(create_comch_producer(comch.connection)),
         consumer(create_comch_consumer(comch.connection, buffers)) {}
-  ~Endpoint() {
-    {
-      auto ctx = doca_comch_producer_as_ctx(producer.get());
-      doca_check(doca_ctx_stop(ctx));
-    }
-    {
-      auto ctx = doca_comch_consumer_as_ctx(consumer.get());
-      doca_check(doca_ctx_stop(ctx));
-    }
-  }
+  ~Endpoint() { stop(); }
 
   bool progress() {
     auto p1 = doca_pe_progress(producer_pe.get());
@@ -178,7 +169,7 @@ class Endpoint : public EndpointBase {
   }
 
  private:
-  void prepare() {
+  void start() {
     {
       doca_check(doca_comch_producer_task_send_set_conf(producer.get(), producer_send_task_comp_cb,
                                                         producer_send_task_err_cb, buffers.size() / 2));
@@ -197,8 +188,9 @@ class Endpoint : public EndpointBase {
       doca_check(doca_pe_connect_ctx(consumer_pe.get(), ctx));
       doca_check(doca_ctx_start(ctx));
     }
-    EndpointBase::prepare();
   }
+
+  void prepare() { EndpointBase::prepare(); }
 
   void run() { EndpointBase::run(); }
 
@@ -235,6 +227,7 @@ class Connection : public ConnectionBase {
   static void establish(uint32_t remote_id, Endpoint &e) {
     e.conn = ConnectionPtr(new Connection(side, e.comch.name, get_comch_consumer_id(e.consumer), remote_id));
     TRACE("Connection {} <-> {} established.", e.conn->local_addr, e.conn->remote_addr);
+    e.prepare();
   }
 
  private:
@@ -277,9 +270,9 @@ class Connector : ConnectionHandleBase {
 
   void connect(Endpoint &e) {
     assert(e.idle());
-    e.prepare();
+    e.start();
     comch.pending_endpoints.emplace_back(e);
-    comch.progress_until([&e]() { return !e.idle(); });
+    comch.progress_until([this]() { return comch.pending_endpoints.empty(); });
   }
 
  private:
@@ -399,7 +392,7 @@ void DocaComch::new_consumer_cb(doca_comch_event_consumer *, doca_comch_connecti
   INFO("Consumer {} get", id);
   auto &e = comch->pending_endpoints.back().get();
   if constexpr (side == Side::ServerSide) {
-    e.prepare();
+    e.start();
   }
   Connection::establish<side>(id, e);
   comch->pending_endpoints.pop_back();
