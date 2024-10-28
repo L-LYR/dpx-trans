@@ -337,6 +337,7 @@ void DocaComch::start() {
 }
 
 inline void DocaComch::stop() {
+  progress_until([this]() { return connection == nullptr; });
   if (side == Side::ServerSide) {
     doca_check_ext(doca_ctx_stop(doca_comch_server_as_ctx(server.get())), DOCA_ERROR_IN_PROGRESS);
   } else if (side == Side::ClientSide) {
@@ -345,35 +346,23 @@ inline void DocaComch::stop() {
 }
 
 template <Side side>
-void DocaComch::state_change_cb(const doca_data ctx_user_data, doca_ctx *ctx, doca_ctx_states prev_state,
+void DocaComch::state_change_cb(const doca_data ctx_user_data, doca_ctx *, doca_ctx_states prev_state,
                                 doca_ctx_states next_state) {
   auto comch = reinterpret_cast<DocaComch *>(ctx_user_data.ptr);
   TRACE("{} state change: {} -> {}", side, prev_state, next_state);
-  if constexpr (side == Side::ServerSide) {
-    switch (next_state) {
-      case DOCA_CTX_STATE_IDLE: {
-      } break;
-      case DOCA_CTX_STATE_STARTING: {
-      } break;
-      case DOCA_CTX_STATE_RUNNING: {
-      } break;
-      case DOCA_CTX_STATE_STOPPING: {
-      } break;
-    }
-  } else if constexpr (side == Side::ClientSide) {
-    switch (next_state) {
-      case DOCA_CTX_STATE_IDLE: {
-      } break;
-      case DOCA_CTX_STATE_STARTING: {
-      } break;
-      case DOCA_CTX_STATE_RUNNING: {
+  switch (next_state) {
+    case DOCA_CTX_STATE_IDLE: {
+    } break;
+    case DOCA_CTX_STATE_STARTING: {
+    } break;
+    case DOCA_CTX_STATE_RUNNING: {
+      if constexpr (side == Side::ClientSide) {
         doca_check(doca_comch_client_get_connection(comch->client.get(), &comch->connection));
-      } break;
-      case DOCA_CTX_STATE_STOPPING: {
-      } break;
-    }
-  } else {
-    static_unreachable;
+      }
+    } break;
+    case DOCA_CTX_STATE_STOPPING: {
+      comch->connection = nullptr;
+    } break;
   }
 }
 
