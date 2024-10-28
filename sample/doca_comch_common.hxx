@@ -160,7 +160,16 @@ class Endpoint : public EndpointBase {
         consumer_pe(create_pe()),
         producer(create_comch_producer(comch.connection)),
         consumer(create_comch_consumer(comch.connection, buffers)) {}
-  ~Endpoint() {}
+  ~Endpoint() {
+    {
+      auto ctx = doca_comch_producer_as_ctx(producer.get());
+      doca_check(doca_ctx_stop(ctx));
+    }
+    {
+      auto ctx = doca_comch_consumer_as_ctx(consumer.get());
+      doca_check(doca_ctx_stop(ctx));
+    }
+  }
 
   bool progress() {
     auto p1 = doca_pe_progress(producer_pe.get());
