@@ -14,6 +14,15 @@
 using namespace std::chrono_literals;
 using namespace doca_wrapper;
 
+namespace data_path {
+
+template <Side side>
+class Endpoint;
+
+}
+
+namespace ctrl_path {
+
 template <Side side>
 class Endpoint;
 
@@ -48,28 +57,26 @@ class Endpoint : public EndpointBase {
   friend class Acceptor;
   friend class Connector;
   friend class Connection;
-  friend class Endpoint;
+  friend class data_path::Endpoint<side>;
 
  public:
-  Endpoint(std::string name_, Device &dev)
+  Endpoint(std::string name_, Device &dev_)
     requires(side == Side::ServerSide)
       : name(name_),
+        dev(dev_),
         pe(create_pe()),
         comch(create_comch_server(dev.dev, dev.rep, name)),
         max_msg_size(device_comch_max_msg_size(dev.dev)),
         recv_queue_size(32) {}
-  Endpoint(std::string name_, Device &dev)
+  Endpoint(std::string name_, Device &dev_)
     requires(side == Side::ClientSide)
       : name(name_),
+        dev(dev_),
         pe(create_pe()),
         comch(create_comch_client(dev.dev, name)),
         max_msg_size(device_comch_max_msg_size(dev.dev)),
         recv_queue_size(32) {}
   ~Endpoint() { close(); }
-
-  void wait_stop() {
-    progress_until([this]() { return conn == nullptr; });
-  }
 
  private:
   void progress_until(std::function<bool()> &&predictor) {
@@ -133,6 +140,7 @@ class Endpoint : public EndpointBase {
                                        std::conditional_t<side == Side::ClientSide, ComchClient, void>>;
 
   std::string name;
+  Device &dev;
   Pe pe;
   ComchType comch;
   uint32_t max_msg_size = 0;
@@ -323,3 +331,5 @@ void Endpoint<side>::msg_recv_cb(struct doca_comch_event_msg_recv *, uint8_t *re
                                  struct doca_comch_connection *connection) {
   INFO("Message received!");
 }
+
+}  // namespace ctrl_path

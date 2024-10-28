@@ -2,6 +2,8 @@
 
 #include "doca_comch_ctrl_common.hxx"
 
+using namespace ctrl_path;
+
 int main(int argc, char* argv[]) {
   spdlog::set_level(spdlog::level::trace);
 

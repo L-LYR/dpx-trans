@@ -26,13 +26,11 @@ int main(int argc, char* argv[]) {
     return -1;
   }
 
-  DocaComch comch(args::get(server_name), args::get(dev_pci_address), args::get(rep_pci_address));
+  // DocaComch comch(args::get(server_name), args::get(dev_pci_address), args::get(rep_pci_address));
   // Endpoint e(comch, 16, 1024);
   // Acceptor a(comch);
   // a.associate({e}).listen_and_accept();
   // e.progress();
-
-  comch.wait_stop();
 
   return 0;
 }

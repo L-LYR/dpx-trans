@@ -24,7 +24,7 @@ int main(int argc, char* argv[]) {
     return -1;
   }
 
-  DocaComch comch(args::get(server_name), args::get(dev_pci_address));
+  // DocaComch comch(args::get(server_name), args::get(dev_pci_address));
   // Endpoint e(comch, 16, 1024);
   // Connector c(comch);
   // c.connect(e);
