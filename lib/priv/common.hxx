@@ -4,6 +4,7 @@
 #include <format>
 #include <string>
 
+#include "util/logger.hxx"
 #include "util/noncopyable.hxx"
 #include "util/nonmovable.hxx"
 
@@ -34,14 +35,17 @@ class EndpointBase : Noncopyable, Nonmovable {
   void prepare() {
     assert(idle());
     s = Status::Ready;
+    TRACE("Endpoint status change: Idle -> Ready");
   }
   void run() {
     assert(ready());
     s = Status::Running;
+    TRACE("Endpoint status change: Ready -> Running");
   }
   void stop() {
     assert(running());
     s = Status::Stopped;
+    TRACE("Endpoint status change: Running -> Stopped");
   }
 
   Status s;
@@ -98,13 +102,13 @@ struct std::formatter<Status> : std::formatter<const char*> {
   Context::iterator format(Status s, Context out) const {
     switch (s) {
       case Status::Idle:
-        return std::formatter<const char*>::format("idle", out);
+        return std::formatter<const char*>::format("Idle", out);
       case Status::Ready:
-        return std::formatter<const char*>::format("ready", out);
+        return std::formatter<const char*>::format("Ready", out);
       case Status::Running:
-        return std::formatter<const char*>::format("running", out);
+        return std::formatter<const char*>::format("Running", out);
       case Status::Stopped:
-        return std::formatter<const char*>::format("stopped", out);
+        return std::formatter<const char*>::format("Stopped", out);
     }
   }
 };

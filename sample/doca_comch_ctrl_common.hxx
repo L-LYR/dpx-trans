@@ -221,7 +221,7 @@ template <Side side>
 void Endpoint<side>::state_change_cb(const doca_data ctx_user_data, doca_ctx *, doca_ctx_states prev_state,
                                      doca_ctx_states next_state) {
   auto e = reinterpret_cast<Endpoint *>(ctx_user_data.ptr);
-  TRACE("{} {} state change: {} -> {}", e->name, side, prev_state, next_state);
+  TRACE("DOCA Comch {} {} state change: {} -> {}", e->name, side, prev_state, next_state);
   switch (next_state) {
     case DOCA_CTX_STATE_IDLE: {
       if constexpr (side == Side::ClientSide) {
