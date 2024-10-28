@@ -126,11 +126,9 @@ class DocaComch {
   DocaDev dev;
   DocaDevRep dev_rep;
   DocaPe pe;  // used for server/client
-  // ctrl path
-  union {
-    DocaComchServer server;
-    DocaComchClient client;
-  };
+  // ctrl path, only use one side
+  DocaComchServer server;
+  DocaComchClient client;
   uint32_t max_msg_size = 0;
   uint32_t recv_queue_size = 0;
   // data path
