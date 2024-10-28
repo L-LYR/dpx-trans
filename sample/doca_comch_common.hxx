@@ -64,7 +64,6 @@ class DocaComch {
         client(create_comch_client(dev, name)),
         max_msg_size(device_comch_max_msg_size(dev)),
         recv_queue_size(32) {
-    dbg(device_comch_max_recv_queue_size(dev));
     start<Side::ClientSide>();
   }
 
@@ -385,7 +384,6 @@ inline void DocaComch::disconnection_event_cb(doca_comch_event_connection_status
   auto comch = reinterpret_cast<DocaComch *>(get_user_data_from_connection<Side::ServerSide>(connection));
   if (connection == comch->connection) {
     comch->connection = nullptr;
-    comch->stop();
     TRACE("Disconnection ok");
   } else {
     WARN("Ignored connection, skip");
