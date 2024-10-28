@@ -137,7 +137,7 @@ class Endpoint : public EndpointBase {
   ComchType comch;
   uint32_t max_msg_size = 0;
   uint32_t recv_queue_size = 0;
-  ComchConnection conn;
+  ComchConnection conn = nullptr;
 };
 
 class Acceptor : ConnectionHandleBase<Side::ServerSide> {
