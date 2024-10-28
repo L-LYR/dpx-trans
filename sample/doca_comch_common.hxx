@@ -160,6 +160,12 @@ class Endpoint : public EndpointBase {
         consumer_pe(create_pe()) {}
   ~Endpoint() {}
 
+  bool progress() {
+    auto p1 = doca_pe_progress(producer_pe.get());
+    auto p2 = doca_pe_progress(consumer_pe.get());
+    return p1 > 0 || p2 > 0;
+  }
+
  private:
   void prepare() {
     {
@@ -381,6 +387,7 @@ void DocaComch::new_consumer_cb(doca_comch_event_consumer *, doca_comch_connecti
   auto comch = reinterpret_cast<DocaComch *>(get_user_data_from_connection<side>(connection));
   assert(connection == comch->connection);
   assert(!comch->pending_endpoints.empty());
+  INFO("Consumer {} get", id);
   auto &e = comch->pending_endpoints.back().get();
   if constexpr (side == Side::ServerSide) {
     e.producer = create_comch_producer(connection);

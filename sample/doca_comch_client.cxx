@@ -2,7 +2,7 @@
 
 #include "doca_comch_common.hxx"
 
-int main(int argc, char* argv[]) {
+int main(int argc, char* argv[]) try {
   spdlog::set_level(spdlog::level::trace);
 
   args::ArgumentParser p("Sample comch client");
@@ -30,4 +30,7 @@ int main(int argc, char* argv[]) {
   c.connect(e);
 
   return 0;
+} catch (const std::runtime_error& e) {
+  std::cerr << e.what() << std::endl;
+  return -2;
 }
