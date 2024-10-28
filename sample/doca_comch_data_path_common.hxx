@@ -106,7 +106,9 @@ class Endpoint : public EndpointBase {
       case DOCA_CTX_STATE_STARTING: {
       } break;
       case DOCA_CTX_STATE_RUNNING: {
-        e->run();
+        if constexpr (side == Side::ServerSide) {
+          e->run();
+        }
       } break;
       case DOCA_CTX_STATE_STOPPING: {
       } break;
