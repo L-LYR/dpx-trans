@@ -6,7 +6,7 @@
 
 using namespace std::chrono_literals;
 
-int main(int args, char* argv[]) {
+int main(int argc, char* argv[]) {
   args::ArgumentParser p("Sample rdma server");
   args::HelpFlag help(p, "help", "Display this help menu", {'h', "help"});
   args::ValueFlag<std::string> local_ip(p, "local ip", "local ip", {"local_ip"}, args::Options::Required);
@@ -14,7 +14,7 @@ int main(int args, char* argv[]) {
   args::ValueFlag<uint16_t> remote_port(p, "remote port", "remote port", {"remote_port"}, args::Options::Required);
 
   try {
-    p.ParseCLI(args, argv);
+    p.ParseCLI(argc, argv);
   } catch (args::Help) {
     std::cout << p;
     return 0;

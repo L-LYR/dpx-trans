@@ -32,7 +32,7 @@ class Connection : public ConnectionBase {
   int sock = -1;
 };
 
-class Acceptor : ConnectionHandleBase {
+class Acceptor : ConnectionHandleBase<Side::ServerSide> {
  public:
   Acceptor(std::string local_ip, uint16_t local_port);
   ~Acceptor();
@@ -46,7 +46,7 @@ class Acceptor : ConnectionHandleBase {
   int sock = -1;  // listening sock
 };
 
-class Connector : ConnectionHandleBase {
+class Connector : ConnectionHandleBase<Side::ClientSide> {
  public:
   Connector(std::string remote_ip, uint16_t remote_port);
 

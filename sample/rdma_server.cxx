@@ -4,14 +4,14 @@
 #include "echo.hxx"
 #include "rdma_common.hxx"
 
-int main(int args, char* argv[]) {
+int main(int argc, char* argv[]) {
   args::ArgumentParser p("Sample rdma server");
   args::HelpFlag help(p, "help", "Display this help menu", {'h', "help"});
   args::ValueFlag<std::string> local_ip(p, "local ip", "local ip", {"local_ip"}, args::Options::Required);
   args::ValueFlag<uint16_t> local_port(p, "local port", "local port", {"local_port"}, args::Options::Required);
 
   try {
-    p.ParseCLI(args, argv);
+    p.ParseCLI(argc, argv);
   } catch (args::Help) {
     std::cout << p;
     return 0;

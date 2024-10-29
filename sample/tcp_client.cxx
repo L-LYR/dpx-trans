@@ -9,7 +9,7 @@
 
 using namespace std::chrono_literals;
 
-int main(int args, char* argv[]) {
+int main(int argc, char* argv[]) {
   spdlog::set_level(spdlog::level::trace);
 
   args::ArgumentParser p("Sample tcp server");
@@ -19,7 +19,7 @@ int main(int args, char* argv[]) {
   args::ValueFlag<uint16_t> remote_port(p, "remote port", "remote port", {"remote_port"}, args::Options::Required);
 
   try {
-    p.ParseCLI(args, argv);
+    p.ParseCLI(argc, argv);
   } catch (args::Help) {
     std::cout << p;
     return 0;

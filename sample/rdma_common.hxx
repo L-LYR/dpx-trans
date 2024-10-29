@@ -216,14 +216,14 @@ class QP : Noncopyable, Nonmovable {
     qp = id->qp;
   }
 
-  void post_recv(Buffer& buffer, uint32_t lkey) {
+  void post_recv(BorrowedBuffer& buffer, uint32_t lkey, size_t idx) {
     ibv_sge sge = {
         .addr = reinterpret_cast<uint64_t>(buffer.data()),
         .length = static_cast<uint32_t>(buffer.size()),
         .lkey = lkey,
     };
     ibv_recv_wr wr = {
-        .wr_id = buffer.index(),
+        .wr_id = idx,
         .next = nullptr,
         .sg_list = &sge,
         .num_sge = 1,
@@ -234,14 +234,14 @@ class QP : Noncopyable, Nonmovable {
     }
   }
 
-  void post_send(Buffer& buffer, uint32_t len, uint32_t lkey) {
+  void post_send(BorrowedBuffer& buffer, uint32_t len, uint32_t lkey, size_t idx) {
     ibv_sge sge = {
         .addr = reinterpret_cast<uint64_t>(buffer.data()),
         .length = len,
         .lkey = lkey,
     };
     ibv_send_wr wr = {
-        .wr_id = buffer.index(),
+        .wr_id = idx,
         .next = nullptr,
         .sg_list = &sge,
         .num_sge = 1,
@@ -270,13 +270,13 @@ class Connection : public ConnectionBase {
  public:
   ~Connection() {
     if (side == Side::ClientSide) {
-      if (auto ec = rdma_disconnect(id); ec < 0) {
-        die("Fail to disconnect with {}:{}, errno: {}", remote_ip, remote_port, errno);
+      if (auto ec = rdma_disconnect(remote_id); ec < 0) {
+        die("Fail to disconnect with {}, errno: {}", remote_addr, errno);
       }
     }
     c.wait_and_ack(RDMA_CM_EVENT_DISCONNECTED);
-    if (id != nullptr) {
-      if (auto ec = rdma_destroy_id(id); ec < 0) {
+    if (remote_id != nullptr) {
+      if (auto ec = rdma_destroy_id(remote_id); ec < 0) {
         die("Fail to destroy cm id, errno: {}", errno);
       }
     }
@@ -285,21 +285,22 @@ class Connection : public ConnectionBase {
  private:
   static ConnectionPtr establish(Side side, rdma_cm_id* id, Endpoint& endpoint);
 
-  Connection(Side side_, rdma_cm_id* id_) : ConnectionBase(side_), id(id_) {
-    if (auto ec = rdma_migrate_id(id, c.underlying()); ec < 0) {
+  Connection(Side side_, rdma_cm_id* id_) : ConnectionBase(side_), remote_id(id_) {
+    if (auto ec = rdma_migrate_id(remote_id, c.underlying()); ec < 0) {
       die("Fail to migrate cm id to new event channel, errno: {}", errno);
     }
-
-    auto local_addr = reinterpret_cast<sockaddr_in*>(rdma_get_local_addr(id));
-    local_ip = inet_ntoa(local_addr->sin_addr);
-    local_port = ntohs(local_addr->sin_port);
-    auto remote_addr = reinterpret_cast<sockaddr_in*>(rdma_get_peer_addr(id));
-    remote_ip = inet_ntoa(remote_addr->sin_addr);
-    remote_port = ntohs(remote_addr->sin_port);
+    {
+      auto addr_in = reinterpret_cast<sockaddr_in*>(rdma_get_local_addr(remote_id));
+      local_addr = std::format("{}:{}", inet_ntoa(addr_in->sin_addr), ntohs(addr_in->sin_port));
+    }
+    {
+      auto addr_in = reinterpret_cast<sockaddr_in*>(rdma_get_peer_addr(remote_id));
+      remote_addr = std::format("{}:{}", inet_ntoa(addr_in->sin_addr), ntohs(addr_in->sin_port));
+    }
   }
 
  private:
-  rdma_cm_id* id = nullptr;
+  rdma_cm_id* remote_id = nullptr;
   EventChannel c;  // do migrate after establish, for disconnection
 };
 
@@ -309,43 +310,42 @@ class Endpoint : public EndpointBase {
   friend class Connection;
 
  public:
-  Endpoint(size_t n_qe, size_t max_payload_size)
-      : send_buffers(n_qe, max_payload_size), recv_buffers(n_qe, max_payload_size) {}
+  Endpoint(size_t n_qe, size_t max_payload_size) : buffers(n_qe * 2, max_payload_size) {}
   ~Endpoint() = default;
 
   template <typename Rpc>
   resp_t<Rpc> call(req_t<Rpc>&& req) {
-    auto& in = get_send_buffer();
-    auto serializer = zpp::bits::out(in);
+    auto [in_buf, in_buf_idx, out_buf, out_buf_idx] = get_buffer_pair();
+
+    auto serializer = zpp::bits::out(in_buf);
     serializer(req).or_throw();
-    std::cout << std::endl << Hexdump(in.data(), serializer.position()) << std::endl;
+    std::cout << std::endl << Hexdump(in_buf.data(), serializer.position()) << std::endl;
     INFO("Write {} bytes", serializer.position());
 
-    qp.post_send(in, serializer.position(), local_send_mr.lkey());
+    qp.post_send(in_buf, serializer.position(), buffers_mr.lkey(), in_buf_idx);
     while (true) {
       if (auto o = cq.poll(); o.has_value()) {
         assert(o->status == IBV_WC_SUCCESS);
         assert(o->opcode == IBV_WC_SEND);
-        assert(o->wr_id == in.index());
+        assert(o->wr_id == in_buf_idx);
         break;
       }
     }
 
-    auto& out = get_recv_buffer();
-    qp.post_recv(out, local_recv_mr.lkey());
+    qp.post_recv(out_buf, buffers_mr.lkey(), out_buf_idx);
     while (true) {
       if (auto o = cq.poll(); o.has_value()) {
         assert(o->status == IBV_WC_SUCCESS);
         assert(o->opcode == IBV_WC_RECV);
-        assert(o->wr_id == out.index());
+        assert(o->wr_id == out_buf_idx);
         break;
       }
     }
 
     auto resp = resp_t<Rpc>{};
-    auto deserializer = zpp::bits::in(out);
+    auto deserializer = zpp::bits::in(out_buf);
     deserializer(resp).or_throw();
-    std::cout << std::endl << Hexdump(out.data(), deserializer.position()) << std::endl;
+    std::cout << std::endl << Hexdump(out_buf.data(), deserializer.position()) << std::endl;
     INFO("Read {} bytes", deserializer.position());
 
     return resp;
@@ -353,14 +353,14 @@ class Endpoint : public EndpointBase {
 
   template <typename Rpc>
   void serve(handler_t<Rpc>&& fn) {
-    auto& out = get_recv_buffer();
-    qp.post_recv(out, local_recv_mr.lkey());
+    auto [in, in_buf_idx, out, out_buf_idx] = get_buffer_pair();
 
+    qp.post_recv(out, buffers_mr.lkey(), out_buf_idx);
     while (true) {
       if (auto o = cq.poll(); o.has_value()) {
         assert(o->status == IBV_WC_SUCCESS);
         assert(o->opcode == IBV_WC_RECV);
-        assert(o->wr_id == out.index());
+        assert(o->wr_id == out_buf_idx);
         break;
       }
     }
@@ -373,19 +373,18 @@ class Endpoint : public EndpointBase {
 
     auto resp = fn(std::move(req));
 
-    auto& in = get_send_buffer();
     auto serializer = zpp::bits::out(in);
     serializer(resp).or_throw();
 
     std::cout << std::endl << Hexdump(in.data(), serializer.position()) << std::endl;
     INFO("Write {} bytes", serializer.position());
 
-    qp.post_send(in, serializer.position(), local_send_mr.lkey());
+    qp.post_send(in, serializer.position(), buffers_mr.lkey(), in_buf_idx);
     while (true) {
       if (auto o = cq.poll(); o.has_value()) {
         assert(o->status == IBV_WC_SUCCESS);
         assert(o->opcode == IBV_WC_SEND);
-        assert(o->wr_id == in.index());
+        assert(o->wr_id == in_buf_idx);
         break;
       }
     }
@@ -396,25 +395,24 @@ class Endpoint : public EndpointBase {
     remote = remote_;
     if (remote_.private_data != nullptr) {
       remote.private_data = nullptr;  // do not own, just copy out
-      // remote_mr_h = *reinterpret_cast<const MRHandle*>(remote_.private_data);
+      remote_mr_h = *reinterpret_cast<const MRHandle*>(remote_.private_data);
     }
   }
 
   void setup_resources(rdma_cm_id* id) {
-    uint32_t n_wr = send_buffers.size();
+    uint32_t n_wr = buffers.size();
     pd.setup(id->verbs);
-    cq.setup(id->verbs, n_wr * 2);
+    cq.setup(id->verbs, n_wr);
     qp.setup(id, pd, cq,
              ibv_qp_cap{
-                 .max_send_wr = n_wr,
-                 .max_recv_wr = n_wr,
+                 .max_send_wr = n_wr / 2,
+                 .max_recv_wr = n_wr / 2,
                  .max_send_sge = 1,
                  .max_recv_sge = 1,
                  .max_inline_data = 0,
              });
-    local_send_mr = pd.register_memory(send_buffers.base_address(), send_buffers.length());
-    local_recv_mr = pd.register_memory(recv_buffers.base_address(), recv_buffers.length());
-    // local_mr_h = local_mr;
+    buffers_mr = pd.register_memory(buffers.base_address(), buffers.total_length());
+    local_mr_h = buffers_mr;
     // setup connection params
     ibv_query_device_ex_input query = {};
     if (auto ec = ibv_query_device_ex(id->verbs, &query, &device_attr_ex); ec < 0) {
@@ -423,41 +421,34 @@ class Endpoint : public EndpointBase {
     local.initiator_depth = device_attr_ex.orig_attr.max_qp_init_rd_atom;
     local.responder_resources = device_attr_ex.orig_attr.max_qp_rd_atom;
     local.rnr_retry_count = 7;
-    // local.private_data = &local_mr_h;
-    // local.private_data_len = sizeof(local_mr_h);
+    local.private_data = &local_mr_h;
+    local.private_data_len = sizeof(local_mr_h);
   }
 
   // TODO better one
-  Buffer& get_send_buffer() {
-    active_send_buffer_idx = (active_send_buffer_idx + 1) % send_buffers.size();
-    send_buffers[active_send_buffer_idx].clear();
-    return send_buffers[active_send_buffer_idx];
+  std::tuple<BorrowedBuffer&, size_t, BorrowedBuffer&, size_t> get_buffer_pair() {
+    auto in_buf_idx = std::exchange(active_buffer_idx, (active_buffer_idx + 1) % (buffers.size() / 2));
+    auto out_buf_idx = in_buf_idx + (buffers.size() / 2);
+    buffers[in_buf_idx].clear();
+    buffers[out_buf_idx].clear();
+    return {buffers[in_buf_idx], in_buf_idx, buffers[out_buf_idx], out_buf_idx};
   }
 
-  Buffer& get_recv_buffer() {
-    active_recv_buffer_idx = (active_recv_buffer_idx + 1) % recv_buffers.size();
-    recv_buffers[active_recv_buffer_idx].clear();
-    return recv_buffers[active_recv_buffer_idx];
-  }
-
-  Buffers send_buffers;
-  Buffers recv_buffers;
+  Buffers<> buffers;
 
   CQ cq;
   PD pd;
   QP qp;
-  PD::MR local_send_mr;
-  PD::MR local_recv_mr;
-  // MRHandle local_mr_h = {};
-  // MRHandle remote_mr_h = {};
+  PD::MR buffers_mr;
+  MRHandle local_mr_h = {};
+  MRHandle remote_mr_h = {};
 
   ConnectionPtr conn = nullptr;
   rdma_conn_param local = {};
   rdma_conn_param remote = {};
   ibv_device_attr_ex device_attr_ex = {};
 
-  uint32_t active_send_buffer_idx = 0;
-  uint32_t active_recv_buffer_idx = 0;
+  uint32_t active_buffer_idx = 0;
 };
 
 inline ConnectionPtr Connection::establish(Side side, rdma_cm_id* id, Endpoint& endpoint) {

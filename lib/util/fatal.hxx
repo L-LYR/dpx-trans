@@ -1,22 +1,20 @@
 #pragma once
 
 #include <format>
+#include <iostream>
 #include <source_location>
 
-namespace detail {
-inline std::string die_prefix(std::source_location location) {
-  return std::format("{}:{} `{}`: ", location.file_name(), location.line(), location.function_name());
+namespace std {
+inline string to_string(const source_location& l) {
+  return format("{}:{} `{}`: ", l.file_name(), l.line(), l.function_name());
 }
-}  // namespace detail
+}  // namespace std
 
-template <typename... Args>
-inline void die(std::string_view fmt, std::source_location location, Args &&...args) {
-  throw std::runtime_error(detail::die_prefix(location) + std::vformat(fmt, std::make_format_args(args...)));
-}
+[[noreturn]] inline void die(std::string why) { throw std::runtime_error(why); }
+inline void footprint(std::string what) { std::cerr << what << std::endl; }
 
-template <>
-inline void die<>(std::string_view message, std::source_location location) {
-  die("{}", location, message);
-}
+#define die(fmt, ...) \
+  die(std::to_string(std::source_location::current()) + std::vformat(fmt, std::make_format_args(__VA_ARGS__)))
 
-#define die(fmt, ...) die(fmt, std::source_location::current() __VA_OPT__(, ) __VA_ARGS__)
+#define footprint(fmt, ...) \
+  footprint(std::to_string(std::source_location::current()) + std::vformat(fmt, std::make_format_args(__VA_ARGS__)))

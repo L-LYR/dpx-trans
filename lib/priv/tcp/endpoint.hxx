@@ -49,13 +49,13 @@ class Endpoint : public EndpointBase {
   void serve_once();
 
   template <Op op>
-  [[nodiscard]] boost::fibers::future<int> post(Buffer &buf, size_t nbytes);
+  [[nodiscard]] boost::fibers::future<int> post(BorrowedBuffer &buf, size_t nbytes, size_t idx);
 
-  std::pair<Buffer &, Buffer &> get_buffer_pair();
+  std::tuple<BorrowedBuffer &, size_t, BorrowedBuffer &, size_t> get_buffer_pair();
 
   ConnectionPtr conn = nullptr;
   io_uring ring;
-  Buffers buffers;
+  Buffers<> buffers;
   boost::fibers::fiber poller;
   std::vector<boost::fibers::fiber> fibers;
   std::vector<boost::fibers::promise<int>> result_ps;
@@ -66,17 +66,17 @@ template <Rpc Rpc>
 resp_t<Rpc> Endpoint::call(req_t<Rpc> &&r) {
   assert(conn->side == Side::ClientSide);
 
-  auto [in_buf, out_buf] = get_buffer_pair();
+  auto [in_buf, in_buf_idx, out_buf, out_buf_idx] = get_buffer_pair();
   auto serializer = Serializer(in_buf);
   serializer(Rpc::id, r).or_throw();
 
   TRACE("{}", Hexdump(in_buf.data(), serializer.position()));
 
-  auto n_write = post<Op::Write>(in_buf, serializer.position()).get();
+  auto n_write = post<Op::Write>(in_buf, serializer.position(), in_buf_idx).get();
   if (n_write < 0) {
     die("Fail to write payload, errno: {}", -n_write);
   }
-  auto n_read = post<Op::Read>(out_buf, out_buf.size()).get();
+  auto n_read = post<Op::Read>(out_buf, out_buf.size(), out_buf_idx).get();
   if (n_read < 0) {
     die("Fail to read payload, errno: {}", -n_read);
   }
@@ -111,9 +111,9 @@ void Endpoint::serve_once() {
   // constexpr auto n = sizeof...(Rpcs);
   // constexpr uint64_t ids[] = {Rpcs::id...};
 
-  auto [in_buf, out_buf] = get_buffer_pair();
+  auto [in_buf, in_buf_idx, out_buf, out_buf_idx] = get_buffer_pair();
 
-  auto n_read = post<Op::Read>(out_buf, out_buf.size()).get();
+  auto n_read = post<Op::Read>(out_buf, out_buf.size(), out_buf_idx).get();
   if (n_read < 0) {
     die("Fail to read payload, errno: {}", -n_read);
   }
@@ -142,7 +142,7 @@ void Endpoint::serve_once() {
     die("Mismatch rpc id, got {}", id);
   }
 
-  auto n_write = post<Op::Write>(in_buf, serializer.position()).get();
+  auto n_write = post<Op::Write>(in_buf, serializer.position(), in_buf_idx).get();
   if (n_write < 0) {
     die("Fail to write payload, errno: {}", -n_write);
   }
@@ -167,23 +167,23 @@ void Endpoint::serve(size_t n_fiber) {
 }
 
 template <Endpoint::Op op>
-[[nodiscard]] boost::fibers::future<int> Endpoint::post(Buffer &buf, size_t nbytes) {
+[[nodiscard]] boost::fibers::future<int> Endpoint::post(BorrowedBuffer &buf, size_t nbytes, size_t idx) {
   assert(nbytes > 0 && nbytes <= buf.size());
   auto sqe = io_uring_get_sqe(&ring);
   if constexpr (op == Op::Write) {
-    io_uring_prep_write_fixed(sqe, conn->sock, buf.data(), nbytes, 0, buf.index());
+    io_uring_prep_write_fixed(sqe, conn->sock, buf.data(), nbytes, 0, idx);
   } else if constexpr (op == Op::Read) {
-    io_uring_prep_read_fixed(sqe, conn->sock, buf.data(), nbytes, 0, buf.index());
+    io_uring_prep_read_fixed(sqe, conn->sock, buf.data(), nbytes, 0, idx);
   } else {
     static_assert(false, "Wrong Op");
   }
   auto result_p = boost::fibers::promise<int>();
   auto result_f = result_p.get_future();
-  io_uring_sqe_set_data64(sqe, buf.index());
+  io_uring_sqe_set_data64(sqe, idx);
   if (auto ec = io_uring_submit(&ring); ec < 0) {
     die("Fail to submit sqe, errno: {}", -ec);
   }
-  result_ps[buf.index()] = std::move(result_p);
+  result_ps[idx] = std::move(result_p);
   return result_f;
 }
 
