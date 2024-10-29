@@ -75,9 +75,7 @@ void Acceptor::listen_and_accept() {
       die("Fail to accept connection, errno: {}", errno);
     }
     TRACE(get_socket_connection_info(client_sock));
-    auto &e = endpoint.get();
-    e.sock = client_sock;
-    e.prepare();
+    endpoint.get().sock = client_sock;
   }
 }
 
@@ -96,6 +94,7 @@ Connector ::Connector(std::string remote_ip, uint16_t remote_port)
       }) {}
 
 void Connector::connect(Endpoint<Side::ClientSide> &e, std::string local_ip, uint16_t local_port) {
+  assert(e.ready());
   auto sock = setup_and_bind(local_ip, local_port);
   if (auto ec = ::connect(sock, reinterpret_cast<sockaddr *>(&remote_addr_in), sizeof(remote_addr_in)); ec < 0) {
     die("Fail to connect with remote server {}, errno: {}", inet_ntoa(remote_addr_in.sin_addr),
@@ -103,7 +102,6 @@ void Connector::connect(Endpoint<Side::ClientSide> &e, std::string local_ip, uin
   }
   TRACE(get_socket_connection_info(sock));
   e.sock = sock;
-  e.prepare();
 }
 
 }  // namespace tcp

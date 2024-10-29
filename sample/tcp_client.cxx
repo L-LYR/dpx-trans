@@ -33,6 +33,7 @@ int main(int argc, char* argv[]) {
 
   auto fn = [&](uint32_t i) {
     tcp::Endpoint<Side::ClientSide> e(2, 128);
+    e.prepare();
     c.connect(e, args::get(local_ip), 10086 + i);
     e.run();
     auto echo_resp = e.call<EchoRpc>(PayloadType{.id = i, .message = "Hello"});
@@ -40,6 +41,7 @@ int main(int argc, char* argv[]) {
     auto hello_resp = e.call<HelloRpc>("Hello");
     INFO("{}", hello_resp);
     std::this_thread::sleep_for(1s);
+    e.stop();
   };
 
   std::jthread t1(fn, 1);

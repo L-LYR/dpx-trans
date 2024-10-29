@@ -28,7 +28,7 @@ class Acceptor : ConnectionHandleBase<Side::ServerSide> {
 
  private:
   EndpointRefs<Side::ServerSide> pending_endpoints;
-  int sock = -1;  // listening sock
+  int sock = -1;
 };
 
 class Connector : ConnectionHandleBase<Side::ClientSide> {

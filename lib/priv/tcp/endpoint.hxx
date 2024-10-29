@@ -27,7 +27,19 @@ class Endpoint : public EndpointBase {
   Endpoint(size_t n_qe, size_t max_payload_size);
   ~Endpoint();
 
-  void prepare() { EndpointBase::prepare(); }
+  void prepare() {
+    EndpointBase::prepare();
+    if (buffers.empty()) {
+      die("No buffer to use");
+    }
+    if (auto ec = io_uring_queue_init(buffers.size(), &ring, 0); ec < 0) {
+      die("Fail to init ring, errno: {}", -ec);
+    }
+    std::vector<iovec> iovecs = buffers.to_iovec();
+    if (auto ec = io_uring_register_buffers(&ring, iovecs.data(), iovecs.size()); ec < 0) {
+      die("Fail to register buffers, errno: {}", -ec);
+    }
+  }
   void run() {
     EndpointBase::run();
     poller = boost::fibers::fiber([this]() {
@@ -38,12 +50,7 @@ class Endpoint : public EndpointBase {
       }
     });
   }
-  void stop() {
-    EndpointBase::stop();
-    if (poller.joinable()) {
-      poller.join();
-    }
-  }
+  void stop() { EndpointBase::stop(); }
 
   template <Rpc Rpc>
   resp_t<Rpc> call(req_t<Rpc> &&r);
@@ -82,21 +89,18 @@ class Endpoint : public EndpointBase {
 template <Side side>
 Endpoint<side>::Endpoint(size_t n_qe, size_t max_payload_size) : buffers(n_qe, max_payload_size), result_ps(n_qe) {
   assert(n_qe != 0 && n_qe % 2 == 0);
-  if (auto ec = io_uring_queue_init(n_qe, &ring, 0); ec < 0) {
-    die("Fail to init ring, errno: {}", -ec);
-  }
-  std::vector<iovec> iovecs = buffers.to_iovec();
-  if (auto ec = io_uring_register_buffers(&ring, iovecs.data(), iovecs.size()); ec < 0) {
-    die("Fail to register buffers, errno: {}", -ec);
-  }
 }
 
 template <Side side>
 Endpoint<side>::~Endpoint() {
+  assert(stopped());
   if (sock != -1) {
     if (auto ec = ::close(sock); ec < 0) {
       die("Fail to close socket {}, errno: {}", sock, errno);
     }
+  }
+  if (poller.joinable()) {
+    poller.join();
   }
   for (auto &fiber : fibers) {
     if (fiber.joinable()) {
@@ -170,7 +174,6 @@ bool Endpoint<side>::dispatch(rpc_id_t id, Deserializer &deserializer, Serialize
     serializer(Rpc::id, resp).or_throw();
     return true;
   }
-  TRACE("expected {} got {}", Rpc::id, id);
   return false;
 }
 
@@ -223,8 +226,6 @@ template <Side side>
 template <Rpc... Rpcs>
 void Endpoint<side>::serve(size_t n_fiber) {
   assert(n_fiber > 0 && n_fiber <= buffers.size());
-
-  run();
   fibers.reserve(n_fiber);
   for (auto i = 0uz; i < n_fiber; ++i) {
     fibers.emplace_back([this]() {

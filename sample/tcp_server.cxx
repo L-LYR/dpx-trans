@@ -29,9 +29,15 @@ int main(int argc, char* argv[]) {
   tcp::Endpoint<Side::ServerSide> e1(16, 128);
   tcp::Endpoint<Side::ServerSide> e2(16, 128);
   tcp::Acceptor a(args::get(local_ip), args::get(local_port));
+  e1.prepare();
+  e2.prepare();
   a.associate({e1, e2}).listen_and_accept();
 
-  auto echo = [](tcp::Endpoint<Side::ServerSide>& e) { e.serve<EchoRpc, HelloRpc>(4); };
+  auto echo = [](tcp::Endpoint<Side::ServerSide>& e) {
+    e.run();
+    e.serve<EchoRpc, HelloRpc>(4);
+    // e.stop();
+  };
 
   std::jthread bg_e1(echo, std::ref(e1));
   std::jthread bg_e2(echo, std::ref(e2));
