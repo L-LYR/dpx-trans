@@ -2,48 +2,33 @@
 
 #include <netinet/in.h>
 
-#include <memory>
 #include <vector>
 
 #include "priv/common.hxx"
 
 namespace tcp {
 
+template <Side side>
 class Endpoint;
-using EndpointRef = std::reference_wrapper<Endpoint>;
-using EndpointRefs = std::vector<EndpointRef>;
 
-class Connection;
-using ConnectionPtr = std::unique_ptr<Connection>;
+template <Side side>
+using EndpointRef = std::reference_wrapper<Endpoint<side>>;
 
-class Connection : public ConnectionBase {
-  friend class Acceptor;
-  friend class Connector;
-  friend class Endpoint;
-
- public:
-  ~Connection();
-
- private:
-  Connection(Side side_, int sock_);
-
-  static void establish(Side side, int sock, Endpoint &e);
-
-  int sock = -1;
-};
+template <Side side>
+using EndpointRefs = std::vector<EndpointRef<side>>;
 
 class Acceptor : ConnectionHandleBase<Side::ServerSide> {
  public:
   Acceptor(std::string local_ip, uint16_t local_port);
   ~Acceptor();
 
-  Acceptor &associate(EndpointRefs &&endpoints_);
+  Acceptor &associate(EndpointRefs<Side::ServerSide> &&endpoints);
 
   void listen_and_accept();
 
  private:
-  EndpointRefs endpoints;
-  int sock = -1;  // listening sock
+  EndpointRefs<Side::ServerSide> pending_endpoints;
+  int sock = -1;
 };
 
 class Connector : ConnectionHandleBase<Side::ClientSide> {
@@ -52,7 +37,7 @@ class Connector : ConnectionHandleBase<Side::ClientSide> {
 
   ~Connector() = default;
 
-  void connect(Endpoint &e, std::string local_ip = "", uint16_t local_port = 0 /* 0 for INPORT_ANY */);
+  void connect(Endpoint<Side::ClientSide> &e, std::string local_ip = "", uint16_t local_port = 0);
 
  private:
   sockaddr_in remote_addr_in = {};

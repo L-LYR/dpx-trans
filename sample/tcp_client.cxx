@@ -2,10 +2,9 @@
 #include <glaze/glaze.hpp>
 
 #include "echo.hxx"
+#include "priv/tcp/connection.hxx"
+#include "priv/tcp/endpoint.hxx"
 #include "util/logger.hxx"
-#define USE_TCP
-#include "priv/common.hxx"
-#undef USE_TCP
 
 using namespace std::chrono_literals;
 
@@ -30,10 +29,11 @@ int main(int argc, char* argv[]) {
     std::cerr << e.what() << std::endl << std::endl << p;
     return -1;
   }
-  Connector c(args::get(remote_ip), args::get(remote_port));
+  tcp::Connector c(args::get(remote_ip), args::get(remote_port));
 
   auto fn = [&](uint32_t i) {
-    Endpoint e(2, 128);
+    tcp::Endpoint<Side::ClientSide> e(2, 128);
+    e.prepare();
     c.connect(e, args::get(local_ip), 10086 + i);
     e.run();
     auto echo_resp = e.call<EchoRpc>(PayloadType{.id = i, .message = "Hello"});
@@ -41,6 +41,7 @@ int main(int argc, char* argv[]) {
     auto hello_resp = e.call<HelloRpc>("Hello");
     INFO("{}", hello_resp);
     std::this_thread::sleep_for(1s);
+    e.stop();
   };
 
   std::jthread t1(fn, 1);
