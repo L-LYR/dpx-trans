@@ -17,6 +17,7 @@ using namespace std::chrono_literals;
 
 namespace tcp {
 
+template <Side side>
 class Endpoint : public EndpointBase {
   friend class Acceptor;
   friend class Connector;
@@ -26,7 +27,23 @@ class Endpoint : public EndpointBase {
   Endpoint(size_t n_qe, size_t max_payload_size);
   ~Endpoint();
 
-  void run();
+  void prepare() { EndpointBase::prepare(); }
+  void run() {
+    EndpointBase::run();
+    poller = boost::fibers::fiber([this]() {
+      while (running()) {
+        if (auto n = poll(1); n == 0) {
+          boost::this_fiber::sleep_for(100ns);
+        }
+      }
+    });
+  }
+  void stop() {
+    EndpointBase::stop();
+    if (poller.joinable()) {
+      poller.join();
+    }
+  }
 
   template <Rpc Rpc>
   resp_t<Rpc> call(req_t<Rpc> &&r);
@@ -53,7 +70,7 @@ class Endpoint : public EndpointBase {
 
   std::tuple<BorrowedBuffer &, size_t, BorrowedBuffer &, size_t> get_buffer_pair();
 
-  ConnectionPtr conn = nullptr;
+  int sock = -1;
   io_uring ring;
   Buffers<> buffers;
   boost::fibers::fiber poller;
@@ -62,10 +79,60 @@ class Endpoint : public EndpointBase {
   uint32_t active_buffer_idx = 0;
 };
 
-template <Rpc Rpc>
-resp_t<Rpc> Endpoint::call(req_t<Rpc> &&r) {
-  assert(conn->side == Side::ClientSide);
+template <Side side>
+Endpoint<side>::Endpoint(size_t n_qe, size_t max_payload_size) : buffers(n_qe, max_payload_size), result_ps(n_qe) {
+  assert(n_qe != 0 && n_qe % 2 == 0);
+  if (auto ec = io_uring_queue_init(n_qe, &ring, 0); ec < 0) {
+    die("Fail to init ring, errno: {}", -ec);
+  }
+  std::vector<iovec> iovecs = buffers.to_iovec();
+  if (auto ec = io_uring_register_buffers(&ring, iovecs.data(), iovecs.size()); ec < 0) {
+    die("Fail to register buffers, errno: {}", -ec);
+  }
+}
 
+template <Side side>
+Endpoint<side>::~Endpoint() {
+  if (sock != -1) {
+    if (auto ec = ::close(sock); ec < 0) {
+      die("Fail to close socket {}, errno: {}", sock, errno);
+    }
+  }
+  for (auto &fiber : fibers) {
+    if (fiber.joinable()) {
+      fiber.join();
+    }
+  }
+  if (auto ec = io_uring_unregister_buffers(&ring); ec < 0) {
+    die("Fail to unregister buffers, errno: {}", -ec);
+  }
+  io_uring_queue_exit(&ring);
+};
+
+template <Side side>
+size_t Endpoint<side>::poll(size_t n) {
+  io_uring_cqe *cqes = nullptr;
+  auto got_n = io_uring_peek_batch_cqe(&ring, &cqes, n);
+  for (auto &cqe : std::span(cqes, got_n)) {
+    auto idx = io_uring_cqe_get_data64(&cqe);
+    result_ps[idx].set_value(cqe.res);
+    io_uring_cqe_seen(&ring, &cqe);
+  }
+  return got_n;
+}
+
+template <Side side>
+std::tuple<BorrowedBuffer &, size_t, BorrowedBuffer &, size_t> Endpoint<side>::get_buffer_pair() {
+  auto in_buf_idx = std::exchange(active_buffer_idx, (active_buffer_idx + 1) % (buffers.size() / 2));
+  auto out_buf_idx = in_buf_idx + (buffers.size() / 2);
+  buffers[in_buf_idx].clear();
+  buffers[out_buf_idx].clear();
+  return {buffers[in_buf_idx], in_buf_idx, buffers[out_buf_idx], out_buf_idx};
+}
+
+template <Side side>
+template <Rpc Rpc>
+resp_t<Rpc> Endpoint<side>::call(req_t<Rpc> &&r) {
   auto [in_buf, in_buf_idx, out_buf, out_buf_idx] = get_buffer_pair();
   auto serializer = Serializer(in_buf);
   serializer(Rpc::id, r).or_throw();
@@ -93,8 +160,9 @@ resp_t<Rpc> Endpoint::call(req_t<Rpc> &&r) {
   return resp;
 }
 
+template <Side side>
 template <Rpc Rpc>
-bool Endpoint::dispatch(rpc_id_t id, Deserializer &deserializer, Serializer &serializer) {
+bool Endpoint<side>::dispatch(rpc_id_t id, Deserializer &deserializer, Serializer &serializer) {
   if (Rpc::id == id) {
     req_t<Rpc> req = {};
     deserializer(req).or_throw();
@@ -106,8 +174,9 @@ bool Endpoint::dispatch(rpc_id_t id, Deserializer &deserializer, Serializer &ser
   return false;
 }
 
+template <Side side>
 template <Rpc... Rpcs>
-void Endpoint::serve_once() {
+void Endpoint<side>::serve_once() {
   // constexpr auto n = sizeof...(Rpcs);
   // constexpr uint64_t ids[] = {Rpcs::id...};
 
@@ -150,9 +219,9 @@ void Endpoint::serve_once() {
   TRACE("n_write: {}", n_write);
 }
 
+template <Side side>
 template <Rpc... Rpcs>
-void Endpoint::serve(size_t n_fiber) {
-  assert(conn->side == Side::ServerSide);
+void Endpoint<side>::serve(size_t n_fiber) {
   assert(n_fiber > 0 && n_fiber <= buffers.size());
 
   run();
@@ -166,14 +235,15 @@ void Endpoint::serve(size_t n_fiber) {
   }
 }
 
-template <Endpoint::Op op>
-[[nodiscard]] boost::fibers::future<int> Endpoint::post(BorrowedBuffer &buf, size_t nbytes, size_t idx) {
+template <Side side>
+template <Endpoint<side>::Op op>
+[[nodiscard]] boost::fibers::future<int> Endpoint<side>::post(BorrowedBuffer &buf, size_t nbytes, size_t idx) {
   assert(nbytes > 0 && nbytes <= buf.size());
   auto sqe = io_uring_get_sqe(&ring);
   if constexpr (op == Op::Write) {
-    io_uring_prep_write_fixed(sqe, conn->sock, buf.data(), nbytes, 0, idx);
+    io_uring_prep_write_fixed(sqe, sock, buf.data(), nbytes, 0, idx);
   } else if constexpr (op == Op::Read) {
-    io_uring_prep_read_fixed(sqe, conn->sock, buf.data(), nbytes, 0, idx);
+    io_uring_prep_read_fixed(sqe, sock, buf.data(), nbytes, 0, idx);
   } else {
     static_assert(false, "Wrong Op");
   }

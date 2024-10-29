@@ -2,11 +2,20 @@
 
 #include <cassert>
 #include <format>
-#include <string>
 
 #include "util/logger.hxx"
 #include "util/noncopyable.hxx"
 #include "util/nonmovable.hxx"
+
+enum class Backend {
+  TCP,
+  Verbs,
+  DOCA_RDMA,
+  DOCA_DMA,
+  DOCA_Comch,
+  DOCA_DPA_MsgQ,
+  DOCA_DPA_RDMA,
+};
 
 enum class Side {
   ClientSide,
@@ -51,18 +60,6 @@ class EndpointBase : Noncopyable, Nonmovable {
   Status s;
 };
 
-class ConnectionBase : Noncopyable, Nonmovable {
- public:
-  ~ConnectionBase() = default;
-
- protected:
-  ConnectionBase(Side side_) : side(side_) {}
-
-  Side side;
-  std::string remote_addr = "";
-  std::string local_addr = "";
-};
-
 template <Side side>
 class ConnectionHandleBase : Noncopyable, Nonmovable {
  public:
@@ -71,17 +68,6 @@ class ConnectionHandleBase : Noncopyable, Nonmovable {
  protected:
   ConnectionHandleBase() = default;
 };
-
-#ifdef USE_TCP
-
-#include "priv/tcp/connection.hxx"
-#include "priv/tcp/endpoint.hxx"
-
-using Endpoint = tcp::Endpoint;
-using Acceptor = tcp::Acceptor;
-using Connector = tcp::Connector;
-
-#endif
 
 template <>
 struct std::formatter<Side> : std::formatter<const char*> {

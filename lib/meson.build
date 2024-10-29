@@ -9,7 +9,6 @@ dpx_trans_incs += basic_incs
 
 dpx_trans_src = [
     './priv/tcp/connection.cxx',
-    './priv/tcp/endpoint.cxx',
     './util/doca_wrapper.cxx',
 ]
 
