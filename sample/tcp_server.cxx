@@ -2,8 +2,7 @@
 #include <glaze/glaze.hpp>
 
 #include "echo.hxx"
-#include "priv/tcp/connection.hxx"
-#include "priv/tcp/endpoint.hxx"
+#include "priv/transport.hxx"
 
 int main(int argc, char* argv[]) {
   spdlog::set_level(spdlog::level::trace);
@@ -26,21 +25,15 @@ int main(int argc, char* argv[]) {
     return -1;
   }
 
-  tcp::Endpoint<Side::ServerSide> e1(16, 128);
-  tcp::Endpoint<Side::ServerSide> e2(16, 128);
-  tcp::Acceptor a(args::get(local_ip), args::get(local_port));
-  e1.prepare();
-  e2.prepare();
-  a.associate({e1, e2}).listen_and_accept();
-
-  auto echo = [](tcp::Endpoint<Side::ServerSide>& e) {
-    e.run();
-    e.serve<EchoRpc, HelloRpc>(4);
-    // e.stop();
+  auto echo = [&]() {
+    Transport<Backend::TCP, true> t(4, 128,
+                                    TcpConnectionInfo{
+                                        .local_ip = args::get(local_ip),
+                                        .local_port = args::get(local_port),
+                                    });
+    t.serve<EchoRpc, HelloRpc>();
   };
-
-  std::jthread bg_e1(echo, std::ref(e1));
-  std::jthread bg_e2(echo, std::ref(e2));
-
+  std::jthread bg_e1(echo);
+  // std::jthread bg_e2(echo);
   return 0;
 }

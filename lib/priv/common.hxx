@@ -1,11 +1,15 @@
 #pragma once
 
+#include <boost/fiber/future.hpp>
 #include <cassert>
 #include <format>
 
 #include "util/logger.hxx"
 #include "util/noncopyable.hxx"
 #include "util/nonmovable.hxx"
+
+using result_t = boost::fibers::future<int32_t>;
+using result_handle_t = boost::fibers::promise<int32_t>;
 
 enum class Backend {
   TCP,

@@ -77,22 +77,43 @@ class BufferBase : Noncopyable {
 };
 
 using OwnedBuffer = BufferBase<true>;
-using BorrowedBuffer = BufferBase<false>;
+
+class BorrowedBuffer : public BufferBase<false> {
+  using Base = BufferBase<false>;
+
+ public:
+  BorrowedBuffer(std::pair<uint8_t *, size_t> &&p, size_t idx_) : Base(std::move(p)), idx(idx_) {}
+  BorrowedBuffer(uint8_t *p, size_t len, size_t idx_) : Base(p, len), idx(idx_) {}
+  ~BorrowedBuffer() = default;
+
+  BorrowedBuffer(BorrowedBuffer &&other) : Base(std::move(other)) { idx = std::exchange(other.idx, -1); }
+  BorrowedBuffer &operator=(BorrowedBuffer &&other) {
+    Base::operator=(std::move(other));
+    if (this != &other) {
+      idx = std::exchange(other.idx, -1);
+    }
+    return *this;
+  }
+
+  size_t index() const { return idx; }
+
+ private:
+  size_t idx = -1;
+};
 
 static_assert(ByteView<OwnedBuffer>, "Buffer is not a valid byte view");
 static_assert(ByteView<BorrowedBuffer>, "Buffer is not a valid byte view");
 
-template <ByteView ByteView = BorrowedBuffer>
 // TODO: change the base class
-class Buffers : public std::vector<ByteView>, Noncopyable {
-  using Base = std::vector<ByteView>;
+class Buffers : public std::vector<BorrowedBuffer>, Noncopyable {
+  using Base = std::vector<BorrowedBuffer>;
 
  public:
   Buffers(size_t n, size_t piece_len_)
       : total_len(piece_len_ * n), piece_len(piece_len_), base(new uint8_t[total_len]) {
     uint8_t *p = base;
     for (auto i = 0uz; i < n; ++i) {
-      this->emplace_back(p, piece_len);
+      this->emplace_back(p, piece_len, i);
       p += piece_len;
     }
   }
@@ -106,6 +127,7 @@ class Buffers : public std::vector<ByteView>, Noncopyable {
   }
 
   Buffers &operator=(Buffers &&other) {
+    Base::operator=(std::move(other));
     if (this != &other) {
       free();
       Base::operator=(std::move(other));
