@@ -142,12 +142,13 @@ resp_t<Rpc> Transport<b, passive>::call(req_t<Rpc> &&r)
 
 namespace {
 
+// TODO decouple (de)serializer
 template <Rpc Rpc>
 bool dispatch(rpc_id_t id, Deserializer &deserializer, Serializer &serializer) {
   if (Rpc::id == id) {
     req_t<Rpc> req = {};
     deserializer(req).or_throw();
-    resp_t<Rpc> resp = Rpc::handler(req);
+    resp_t<Rpc> resp = Rpc()(req);
     serializer(Rpc::id, resp).or_throw();
     return true;
   }

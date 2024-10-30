@@ -10,7 +10,7 @@ struct PayloadType {
 };
 
 struct EchoRpc : RpcBase<"Echo", PayloadType, PayloadType> {
-  inline const static Handler handler = [](Request&& req) -> Response {
+  Response operator()(Request& req) {
     INFO("{}", glz::write_json<>(req).value_or("Corrupted Payload!"));
     req.id++;
     req.message += ", World";
@@ -19,7 +19,7 @@ struct EchoRpc : RpcBase<"Echo", PayloadType, PayloadType> {
 };
 
 struct HelloRpc : RpcBase<"Hello", std::string, std::string> {
-  inline const static Handler handler = [](Request&& req) -> Response {
+  Response operator()(Request& req) {
     INFO("{}", req);
     return "Echo: " + req;
   };
