@@ -51,7 +51,7 @@ class Endpoint : public EndpointBase {
     auto got_n = io_uring_peek_batch_cqe(&ring, &cqes, n);
     for (auto &cqe : std::span(cqes, got_n)) {
       auto idx = io_uring_cqe_get_data64(&cqe);
-      handles[idx].set_value(cqe.res);
+      std::move(handles[idx]).set_value(cqe.res);  // move, set value and destruct
       io_uring_cqe_seen(&ring, &cqe);
     }
     return got_n;
@@ -80,24 +80,17 @@ class Endpoint : public EndpointBase {
       static_unreachable;
     }
 
-    // create a new result handle
-    handles[next_handle_idx] = result_handle_t{};
-
-    auto &handle = handles[next_handle_idx];
-    io_uring_sqe_set_data64(sqe, next_handle_idx);
+    io_uring_sqe_set_data64(sqe, buf.index());
     if (auto ec = io_uring_submit(&ring); ec < 0) {
       die("Fail to submit sqe, errno: {}", -ec);
     }
-
-    next_handle_idx = (next_handle_idx + 1) % handles.size();
-
-    return handle.get_future();
+    handles[buf.index()] = {};  // create a new one
+    return handles[buf.index()].get_future();
   }
 
   int sock = -1;
   io_uring ring;
   std::vector<result_handle_t> handles;
-  uint32_t next_handle_idx = 0;
 };
 
 }  // namespace tcp

@@ -1,10 +1,10 @@
 #include <args.hxx>
-#include <boost/fiber/algo/shared_work.hpp>
 #include <glaze/glaze.hpp>
 
 #include "echo.hxx"
 #include "priv/transport.hxx"
 #include "util/logger.hxx"
+#include "util/timer.hxx"
 
 using namespace std::chrono_literals;
 
@@ -30,24 +30,22 @@ int main(int argc, char* argv[]) {
     return -1;
   }
 
-  Transport<Backend::TCP, false> t(1, 128,
+  Transport<Backend::TCP, false> t(1, 4096,
                                    TcpConnectionInfo{
                                        .remote_ip = args::get(remote_ip),
                                        .local_ip = args::get(local_ip),
                                        .remote_port = args::get(remote_port),
                                    });
 
-  auto fn = [&](uint32_t i) {
+  auto fn = [&]() {
     TransportGuard g(t);
-    auto echo_resp = t.call<EchoRpc>(PayloadType{.id = i, .message = "Hello"});
-    INFO("{}", glz::write_json<>(echo_resp).value_or("Corrupted Payload!"));
-    auto hello_resp = t.call<HelloRpc>("Hello");
-    INFO("{}", hello_resp);
+    Timer tt;
+    for (auto i = 0; i < 10000; i++) {
+      auto echo_resp = t.call<EchoRpc>(payload_4k);
+    }
+    INFO("{}us", tt.elapsed_us());
   };
 
-  std::thread t1(fn, 1);
-  t1.join();
-  std::thread t2(fn, 2);
-  t2.join();
+  std::jthread t1(fn);
   return 0;
 }

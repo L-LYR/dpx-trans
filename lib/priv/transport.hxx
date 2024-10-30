@@ -8,24 +8,29 @@
 #include "util/logger.hxx"
 #include "util/serialization.hxx"
 
-// currently, we donot care the concurrent race.
-class ReuseBuffers : public Buffers {
- public:
-  ReuseBuffers(uint32_t n, uint32_t piece_size) : Buffers(n, piece_size) {}
-  ~ReuseBuffers() = default;
+// TODO: currently, we donot care the concurrent race.
+class ReuseBufferPairs : public Buffers {
+  using Base = Buffers;
 
-  std::tuple<BorrowedBuffer &, size_t, BorrowedBuffer &, size_t> get_buffer_pair() {
-    auto in_buf_idx = std::exchange(next_buffer_idx, (next_buffer_idx + 1) % (size() / 2));
-    auto out_buf_idx = in_buf_idx + (size() / 2);
-    auto &in_buf = (*this)[in_buf_idx];
-    auto &out_buf = (*this)[out_buf_idx];
-    in_buf.clear();
-    out_buf.clear();
-    return {in_buf, in_buf_idx, out_buf, out_buf_idx};
+ public:
+  ReuseBufferPairs(uint32_t n, uint32_t piece_size) : Buffers(n * 2, piece_size) {}
+  ~ReuseBufferPairs() = default;
+
+  std::pair<BorrowedBuffer &, BorrowedBuffer &> operator[](size_t i) {
+    if (i > size() / 2) {
+      return {Base::operator[](i - size() / 2), Base::operator[](i)};
+    } else {
+      return {Base::operator[](i), Base::operator[](i + size() / 2)};
+    }
+  }
+
+  std::pair<BorrowedBuffer &, BorrowedBuffer &> get_buffer_pair() {
+    idx = (idx + 1) % (size() / 2);
+    return (*this)[idx];
   }
 
  private:
-  uint32_t next_buffer_idx = 0;
+  size_t idx = -1;
 };
 
 struct TcpConnectionInfo {
@@ -48,7 +53,7 @@ class Transport {
  public:
   Transport(uint32_t n_workers_, uint32_t max_rpc_msg_size, const TcpConnectionInfo &info)
     requires(b == Backend::TCP)
-      : n_workers(n_workers_), buffers(n_workers * 2, max_rpc_msg_size) {
+      : n_workers(n_workers_), buffers(n_workers, max_rpc_msg_size) {
     ctrl_e.prepare(buffers);
     if constexpr (passive) {
       CtrlPathAcceptor(info.local_ip, info.local_port).associate({ctrl_e}).listen_and_accept();
@@ -65,7 +70,7 @@ class Transport {
   }
 
   template <Rpc Rpc>
-  resp_t<Rpc> call(req_t<Rpc> &&r)
+  resp_t<Rpc> call(const req_t<Rpc> &r)
     requires(!passive);
 
   template <Rpc... Rpcs>
@@ -74,11 +79,11 @@ class Transport {
 
  private:
   template <Rpc... Rpcs>
-  void serve_once()
+  void serve_once(size_t idx)
     requires(passive);
 
   size_t n_workers = -1;
-  ReuseBuffers buffers;
+  ReuseBufferPairs buffers;
   CtrlPathEndpointType ctrl_e;
 };
 
@@ -110,10 +115,13 @@ class TransportGuard : Noncopyable, Nonmovable {
 
 template <Backend b, bool passive>
 template <Rpc Rpc>
-resp_t<Rpc> Transport<b, passive>::call(req_t<Rpc> &&r)
+resp_t<Rpc> Transport<b, passive>::call(const req_t<Rpc> &r)
   requires(!passive)
 {
-  auto [in_buf, in_buf_idx, out_buf, out_buf_idx] = buffers.get_buffer_pair();
+  auto [in_buf, out_buf] = buffers.get_buffer_pair();
+  in_buf.clear();
+  out_buf.clear();
+
   auto serializer = Serializer(in_buf);
   serializer(Rpc::id, r).or_throw();
 
@@ -159,13 +167,15 @@ bool dispatch(rpc_id_t id, Deserializer &deserializer, Serializer &serializer) {
 
 template <Backend b, bool passive>
 template <Rpc... Rpcs>
-void Transport<b, passive>::serve_once()
+void Transport<b, passive>::serve_once(size_t idx)
   requires(passive)
 {
   // constexpr auto n = sizeof...(Rpcs);
   // constexpr uint64_t ids[] = {Rpcs::id...};
 
-  auto [in_buf, in_buf_idx, out_buf, out_buf_idx] = buffers.get_buffer_pair();
+  auto [in_buf, out_buf] = buffers[idx];
+  in_buf.clear();
+  out_buf.clear();
 
   TRACE("post recv");
   auto n_read = ctrl_e.post_recv(out_buf, out_buf.size()).get();
@@ -214,11 +224,13 @@ void Transport<b, passive>::serve()
   std::vector<boost::fibers::fiber> workers;
   workers.reserve(n_workers);
   for (auto i = 0uz; i < workers.capacity(); ++i) {
-    workers.emplace_back([this]() {
-      while (ctrl_e.running()) {
-        serve_once<Rpcs...>();
-      }
-    });
+    workers.emplace_back(
+        [this](size_t idx) {
+          while (ctrl_e.running()) {
+            serve_once<Rpcs...>(idx);
+          }
+        },
+        i);
   }
   for (auto &worker : workers) {
     if (worker.joinable()) {
