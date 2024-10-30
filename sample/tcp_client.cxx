@@ -1,4 +1,5 @@
 #include <args.hxx>
+#include <boost/fiber/algo/shared_work.hpp>
 #include <glaze/glaze.hpp>
 
 #include "echo.hxx"
@@ -29,22 +30,24 @@ int main(int argc, char* argv[]) {
     return -1;
   }
 
+  Transport<Backend::TCP, false> t(1, 128,
+                                   TcpConnectionInfo{
+                                       .remote_ip = args::get(remote_ip),
+                                       .local_ip = args::get(local_ip),
+                                       .remote_port = args::get(remote_port),
+                                   });
+
   auto fn = [&](uint32_t i) {
-    Transport<Backend::TCP, false> t(1, 128,
-                                     TcpConnectionInfo{
-                                         .remote_ip = args::get(remote_ip),
-                                         .local_ip = args::get(local_ip),
-                                         .remote_port = args::get(remote_port),
-                                     });
-    std::this_thread::sleep_for(1s);
+    TransportGuard g(t);
     auto echo_resp = t.call<EchoRpc>(PayloadType{.id = i, .message = "Hello"});
     INFO("{}", glz::write_json<>(echo_resp).value_or("Corrupted Payload!"));
     auto hello_resp = t.call<HelloRpc>("Hello");
     INFO("{}", hello_resp);
-    std::this_thread::sleep_for(1s);
   };
 
-  std::jthread t1(fn, 1);
-  // std::jthread t2(fn, 2);
+  std::thread t1(fn, 1);
+  t1.join();
+  std::thread t2(fn, 2);
+  t2.join();
   return 0;
 }

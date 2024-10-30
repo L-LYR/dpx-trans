@@ -34,6 +34,5 @@ int main(int argc, char* argv[]) {
     t.serve<EchoRpc, HelloRpc>();
   };
   std::jthread bg_e1(echo);
-  // std::jthread bg_e2(echo);
   return 0;
 }
