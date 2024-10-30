@@ -79,7 +79,7 @@ void Acceptor::listen_and_accept() {
   }
 }
 
-Acceptor &Acceptor::associate(EndpointRefs<Side::ServerSide> &&es) {
+Acceptor &Acceptor::associate(EndpointRefs &&es) {
   pending_endpoints.insert(pending_endpoints.end(), std::make_move_iterator(es.begin()),
                            std::make_move_iterator(es.end()));
   return *this;
@@ -93,7 +93,7 @@ Connector ::Connector(std::string remote_ip, uint16_t remote_port)
           .sin_zero = {},
       }) {}
 
-void Connector::connect(Endpoint<Side::ClientSide> &e, std::string local_ip, uint16_t local_port) {
+void Connector::connect(Endpoint &e, std::string local_ip, uint16_t local_port) {
   assert(e.ready());
   auto sock = setup_and_bind(local_ip, local_port);
   if (auto ec = ::connect(sock, reinterpret_cast<sockaddr *>(&remote_addr_in), sizeof(remote_addr_in)); ec < 0) {

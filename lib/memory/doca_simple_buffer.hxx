@@ -59,7 +59,7 @@ DocaComchConsumer create_comch_consumer(ComchConnection connection, MmapBuffers&
 
 class MmapBuffer : public BorrowedBuffer {
  public:
-  MmapBuffer(doca_buf* buf_) : BorrowedBuffer(doca_wrapper::doca_buf_data(buf_)), buf(buf_) {
+  MmapBuffer(doca_buf* buf_, size_t idx_) : BorrowedBuffer(doca_wrapper::doca_buf_data(buf_), idx_), buf(buf_) {
     std::tie(head, head_len) = doca_wrapper::doca_buf_head(buf);
   }
   ~MmapBuffer() {

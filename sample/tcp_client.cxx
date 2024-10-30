@@ -2,8 +2,7 @@
 #include <glaze/glaze.hpp>
 
 #include "echo.hxx"
-#include "priv/tcp/connection.hxx"
-#include "priv/tcp/endpoint.hxx"
+#include "priv/transport.hxx"
 #include "util/logger.hxx"
 
 using namespace std::chrono_literals;
@@ -29,22 +28,23 @@ int main(int argc, char* argv[]) {
     std::cerr << e.what() << std::endl << std::endl << p;
     return -1;
   }
-  tcp::Connector c(args::get(remote_ip), args::get(remote_port));
 
   auto fn = [&](uint32_t i) {
-    tcp::Endpoint<Side::ClientSide> e(2, 128);
-    e.prepare();
-    c.connect(e, args::get(local_ip), 10086 + i);
-    e.run();
-    auto echo_resp = e.call<EchoRpc>(PayloadType{.id = i, .message = "Hello"});
+    Transport<Backend::TCP, false> t(1, 128,
+                                     TcpConnectionInfo{
+                                         .remote_ip = args::get(remote_ip),
+                                         .local_ip = args::get(local_ip),
+                                         .remote_port = args::get(remote_port),
+                                     });
+    std::this_thread::sleep_for(1s);
+    auto echo_resp = t.call<EchoRpc>(PayloadType{.id = i, .message = "Hello"});
     INFO("{}", glz::write_json<>(echo_resp).value_or("Corrupted Payload!"));
-    auto hello_resp = e.call<HelloRpc>("Hello");
+    auto hello_resp = t.call<HelloRpc>("Hello");
     INFO("{}", hello_resp);
     std::this_thread::sleep_for(1s);
-    e.stop();
   };
 
   std::jthread t1(fn, 1);
-  std::jthread t2(fn, 2);
+  // std::jthread t2(fn, 2);
   return 0;
 }

@@ -8,26 +8,23 @@
 
 namespace tcp {
 
-template <Side side>
 class Endpoint;
 
-template <Side side>
-using EndpointRef = std::reference_wrapper<Endpoint<side>>;
+using EndpointRef = std::reference_wrapper<Endpoint>;
 
-template <Side side>
-using EndpointRefs = std::vector<EndpointRef<side>>;
+using EndpointRefs = std::vector<EndpointRef>;
 
 class Acceptor : ConnectionHandleBase<Side::ServerSide> {
  public:
   Acceptor(std::string local_ip, uint16_t local_port);
   ~Acceptor();
 
-  Acceptor &associate(EndpointRefs<Side::ServerSide> &&endpoints);
+  Acceptor &associate(EndpointRefs &&endpoints);
 
   void listen_and_accept();
 
  private:
-  EndpointRefs<Side::ServerSide> pending_endpoints;
+  EndpointRefs pending_endpoints;
   int sock = -1;
 };
 
@@ -37,7 +34,7 @@ class Connector : ConnectionHandleBase<Side::ClientSide> {
 
   ~Connector() = default;
 
-  void connect(Endpoint<Side::ClientSide> &e, std::string local_ip = "", uint16_t local_port = 0);
+  void connect(Endpoint &e, std::string local_ip = "", uint16_t local_port = 0);
 
  private:
   sockaddr_in remote_addr_in = {};
