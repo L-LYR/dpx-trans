@@ -4,12 +4,34 @@
 #include <cassert>
 #include <format>
 
+#include "concept/rpc.hxx"
 #include "util/logger.hxx"
 #include "util/noncopyable.hxx"
 #include "util/nonmovable.hxx"
 
-using result_t = boost::fibers::future<int32_t>;
-using result_handle_t = boost::fibers::promise<int32_t>;
+enum class Op {
+  Send,
+  Recv,
+};
+
+struct ContextBase {};
+
+using op_res_promise_t = boost::fibers::promise<int>;
+using op_res_future_t = boost::fibers::future<int>;
+
+struct OpContext : public ContextBase {
+  op_res_promise_t op_res = {};
+};
+
+template <Rpc Rpc>
+using resp_promise_t = boost::fibers::promise<resp_t<Rpc>>;
+template <Rpc Rpc>
+using resp_future_t = boost::fibers::future<resp_t<Rpc>>;
+
+template <Rpc Rpc>
+struct RpcContext : public ContextBase {
+  resp_promise_t<Rpc> resp = {};
+};
 
 enum class Backend {
   TCP,

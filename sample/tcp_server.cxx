@@ -26,12 +26,14 @@ int main(int argc, char* argv[]) {
   }
 
   auto echo = [&]() {
-    Transport<Backend::TCP, true> t(32, 4096,
-                                    TcpConnectionInfo{
-                                        .local_ip = args::get(local_ip),
-                                        .local_port = args::get(local_port),
-                                    });
-    t.serve<EchoRpc>();
+    Transport<Backend::TCP, EchoRpc> t(32, 4096,
+                                       ConnectionInfo{
+                                           .passive = true,
+                                           .local_ip = args::get(local_ip),
+                                           .local_port = args::get(local_port),
+                                       });
+    TransportGuard g(t);
+    t.serve();
   };
   std::jthread bg_e1(echo);
   return 0;

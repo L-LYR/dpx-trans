@@ -37,60 +37,59 @@ class Endpoint : public EndpointBase {
     if (auto ec = io_uring_queue_init(buffers.size(), &ring, 0); ec < 0) {
       die("Fail to init ring, errno: {}", -ec);
     }
-    std::vector<iovec> iovecs = buffers.to_iovec();
-    if (auto ec = io_uring_register_buffers(&ring, iovecs.data(), iovecs.size()); ec < 0) {
+    iovec v = {
+        .iov_base = buffers.base_address(),
+        .iov_len = buffers.total_length(),
+    };
+    if (auto ec = io_uring_register_buffers(&ring, &v, 1); ec < 0) {
       die("Fail to register buffers, errno: {}", -ec);
     }
-    handles.resize(buffers.size());
   }
   void run() { EndpointBase::run(); }
   void stop() { EndpointBase::stop(); }
 
-  size_t progress(size_t n = 1) {
-    io_uring_cqe *cqes = nullptr;
-    auto got_n = io_uring_peek_batch_cqe(&ring, &cqes, n);
-    for (auto &cqe : std::span(cqes, got_n)) {
-      auto idx = io_uring_cqe_get_data64(&cqe);
-      std::move(handles[idx]).set_value(cqe.res);  // move, set value and destruct
-      io_uring_cqe_seen(&ring, &cqe);
+  bool progress() {
+    io_uring_cqe *cqe = nullptr;
+    io_uring_peek_cqe(&ring, &cqe);
+    if (cqe != nullptr) {
+      OpContext *ctx = reinterpret_cast<OpContext *>(io_uring_cqe_get_data(cqe));
+      ctx->op_res.set_value(cqe->res);
+      io_uring_cqe_seen(&ring, cqe);
+      return true;
     }
-    return got_n;
+    return false;
   }
 
-  result_t post_recv(BorrowedBuffer &buf, size_t nbytes) { return post<Op::Read>(buf, nbytes); }
+  op_res_future_t post_recv(OpContext &ctx, BorrowedBuffer &buf, size_t nbytes) {
+    return post<Op::Recv>(ctx, buf, nbytes);
+  }
 
-  result_t post_send(BorrowedBuffer &buf, size_t nbytes) { return post<Op::Write>(buf, nbytes); }
+  op_res_future_t post_send(OpContext &ctx, BorrowedBuffer &buf, size_t nbytes) {
+    return post<Op::Send>(ctx, buf, nbytes);
+  }
 
  private:
-  enum class Op {
-    Write,
-    Read,
-  };
-
-  template <Endpoint::Op op>
-  result_t post(BorrowedBuffer &buf, size_t nbytes) {
+  template <Op op>
+  op_res_future_t post(OpContext &ctx, BorrowedBuffer &buf, size_t nbytes) {
     assert(running());
     assert(nbytes > 0 && nbytes <= buf.size());
     auto sqe = io_uring_get_sqe(&ring);
-    if constexpr (op == Op::Write) {
-      io_uring_prep_write_fixed(sqe, sock, buf.data(), nbytes, 0, buf.index());
-    } else if constexpr (op == Op::Read) {
-      io_uring_prep_read_fixed(sqe, sock, buf.data(), nbytes, 0, buf.index());
+    if constexpr (op == Op::Send) {
+      io_uring_prep_write_fixed(sqe, sock, buf.data(), nbytes, 0, 0);
+    } else if constexpr (op == Op::Recv) {
+      io_uring_prep_read_fixed(sqe, sock, buf.data(), nbytes, 0, 0);
     } else {
       static_unreachable;
     }
-
-    io_uring_sqe_set_data64(sqe, buf.index());
+    io_uring_sqe_set_data(sqe, &ctx);
     if (auto ec = io_uring_submit(&ring); ec < 0) {
       die("Fail to submit sqe, errno: {}", -ec);
     }
-    handles[buf.index()] = {};  // create a new one
-    return handles[buf.index()].get_future();
+    return ctx.op_res.get_future();
   }
 
   int sock = -1;
   io_uring ring;
-  std::vector<result_handle_t> handles;
 };
 
 }  // namespace tcp

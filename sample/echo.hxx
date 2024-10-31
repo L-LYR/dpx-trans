@@ -68,4 +68,4 @@ const PayloadType payload_4k = {
         "convallis, felis et molestie aliquam, nisl orci mattis arcu, in mollis nibh arcu ac elit. Vestibulum "
         "vehicula, orci sit amet tempor dapibus, lorem nunc pharetra mi, sit amet vehicula massa nisi sed mi.Donec sed "
         "leo sit amet nibh elementum suscipit. Integer vitae ornare felis. Vestibulum semper quam metus, vitae aliquet "
-        "diam lacinia eu. Donec luctus sapien gravida posuere porttitor. Sed tincidunt ullamcorper tellus."};
+        "diam lacinia eu. Donec luctus sapien gravida posuere porttitor."};

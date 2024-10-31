@@ -77,29 +77,30 @@ class BufferBase : Noncopyable {
 };
 
 using OwnedBuffer = BufferBase<true>;
+using BorrowedBuffer = BufferBase<false>;
 
-class BorrowedBuffer : public BufferBase<false> {
-  using Base = BufferBase<false>;
+// class BorrowedBuffer : public BufferBase<false> {
+//   using Base = BufferBase<false>;
 
- public:
-  BorrowedBuffer(std::pair<uint8_t *, size_t> &&p, size_t idx_) : Base(std::move(p)), idx(idx_) {}
-  BorrowedBuffer(uint8_t *p, size_t len, size_t idx_) : Base(p, len), idx(idx_) {}
-  ~BorrowedBuffer() = default;
+//  public:
+//   BorrowedBuffer(std::pair<uint8_t *, size_t> &&p, size_t idx_) : Base(std::move(p)), idx(idx_) {}
+//   BorrowedBuffer(uint8_t *p, size_t len, size_t idx_) : Base(p, len), idx(idx_) {}
+//   ~BorrowedBuffer() = default;
 
-  BorrowedBuffer(BorrowedBuffer &&other) : Base(std::move(other)) { idx = std::exchange(other.idx, -1); }
-  BorrowedBuffer &operator=(BorrowedBuffer &&other) {
-    Base::operator=(std::move(other));
-    if (this != &other) {
-      idx = std::exchange(other.idx, -1);
-    }
-    return *this;
-  }
+//   BorrowedBuffer(BorrowedBuffer &&other) : Base(std::move(other)) { idx = std::exchange(other.idx, -1); }
+//   BorrowedBuffer &operator=(BorrowedBuffer &&other) {
+//     Base::operator=(std::move(other));
+//     if (this != &other) {
+//       idx = std::exchange(other.idx, -1);
+//     }
+//     return *this;
+//   }
 
-  size_t index() const { return idx; }
+//   size_t index() const { return idx; }
 
- private:
-  size_t idx = -1;
-};
+//  private:
+//   size_t idx = -1;
+// };
 
 static_assert(ByteView<OwnedBuffer>, "Buffer is not a valid byte view");
 static_assert(ByteView<BorrowedBuffer>, "Buffer is not a valid byte view");
@@ -113,7 +114,7 @@ class Buffers : public std::vector<BorrowedBuffer>, Noncopyable {
       : total_len(piece_len_ * n), piece_len(piece_len_), base(new uint8_t[total_len]) {
     uint8_t *p = base;
     for (auto i = 0uz; i < n; ++i) {
-      this->emplace_back(p, piece_len, i);
+      this->emplace_back(p, piece_len);
       p += piece_len;
     }
   }
@@ -137,8 +138,6 @@ class Buffers : public std::vector<BorrowedBuffer>, Noncopyable {
     }
     return *this;
   }
-
-  std::vector<iovec> to_iovec() const { return std::vector<iovec>(Base::begin(), Base::end()); }
 
   uint8_t *base_address() { return base; }
   const uint8_t *base_address() const { return base; }

@@ -30,18 +30,31 @@ int main(int argc, char* argv[]) {
     return -1;
   }
 
-  Transport<Backend::TCP, false> t(1, 4096,
-                                   TcpConnectionInfo{
-                                       .remote_ip = args::get(remote_ip),
-                                       .local_ip = args::get(local_ip),
-                                       .remote_port = args::get(remote_port),
-                                   });
+  Transport<Backend::TCP, EchoRpc> t(32, 4096,
+                                     ConnectionInfo{
+                                         .passive = false,
+                                         .remote_ip = args::get(remote_ip),
+                                         .local_ip = args::get(local_ip),
+                                         .remote_port = args::get(remote_port),
+                                     });
+
+  auto call_fn = [&]() {
+    for (auto i = 0; i < 1000; i++) {
+      auto echo_resp = t.call<EchoRpc>(payload_4k);
+      auto resp = echo_resp.get();
+    }
+  };
 
   auto fn = [&]() {
     TransportGuard g(t);
     Timer tt;
-    for (auto i = 0; i < 10000; i++) {
-      auto echo_resp = t.call<EchoRpc>(payload_4k);
+    std::vector<boost::fibers::fiber> callers;
+    callers.reserve(16);
+    for (auto i = 0uz; i < callers.capacity(); ++i) {
+      callers.emplace_back(call_fn);
+    }
+    for (auto& caller : callers) {
+      caller.join();
     }
     INFO("{}us", tt.elapsed_us());
   };
