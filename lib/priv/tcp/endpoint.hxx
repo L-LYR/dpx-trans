@@ -64,6 +64,9 @@ class Endpoint : public EndpointBase {
 
   op_res_future_t post_send(OpContext &ctx, BorrowedBuffer &buf) { return post<Op::Send>(ctx, buf); }
 
+  // NOTICE
+  // Because of the tcp stick package problem, we here send the whole buffer in one post.
+
  private:
   template <Op op>
   op_res_future_t post(OpContext &ctx, BorrowedBuffer &buf) {
