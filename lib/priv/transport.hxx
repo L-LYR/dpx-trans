@@ -25,7 +25,6 @@ class Transport {
   using CtrlPathEndpointType = std::conditional_t<b == Backend::TCP, tcp::Endpoint, void>;
   using CtrlPathConnector = std::conditional_t<b == Backend::TCP, tcp::Connector, void>;
   using CtrlPathAcceptor = std::conditional_t<b == Backend::TCP, tcp::Acceptor, void>;
-  using DataPathEndpointType = std::conditional_t<b == Backend::TCP, tcp::Endpoint, void>;
 
   template <Backend, Rpc...>
   friend class TransportGuard;
@@ -33,8 +32,8 @@ class Transport {
  public:
   Transport(uint32_t n_workers_, uint32_t max_rpc_msg_size, const ConnectionInfo &info_)
     requires(b == Backend::TCP)
-      : info(info_), n_workers(n_workers_), buffers(n_workers, max_rpc_msg_size) {
-    ctrl_e.prepare(buffers);
+      : info(info_), n_workers(n_workers_), buffers(n_workers, max_rpc_msg_size), ctrl_e(buffers) {
+    ctrl_e.prepare();
     for (auto &buffer : buffers) {
       vacant_buffers.push_back(buffer);
     }
@@ -214,7 +213,6 @@ class Transport {
   std::unordered_map<int64_t, ContextBase *> outstanding_rpcs;
 
   CtrlPathEndpointType ctrl_e;
-  DataPathEndpointType data_e;
 };
 
 template <Backend b, Rpc... rpcs>

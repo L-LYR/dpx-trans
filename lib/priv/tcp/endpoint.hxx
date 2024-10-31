@@ -15,10 +15,9 @@ namespace tcp {
 class Endpoint : public EndpointBase {
   friend class Acceptor;
   friend class Connector;
-  friend class Connection;
 
  public:
-  Endpoint() = default;
+  Endpoint(Buffers &buffers_) : buffers(buffers_) {}
 
   ~Endpoint() {
     if (sock != -1) {
@@ -32,7 +31,7 @@ class Endpoint : public EndpointBase {
     io_uring_queue_exit(&ring);
   };
 
-  void prepare(Buffers &buffers) {
+  void prepare() {
     EndpointBase::prepare();
     if (auto ec = io_uring_queue_init(buffers.size(), &ring, 0); ec < 0) {
       die("Fail to init ring, errno: {}", -ec);
@@ -88,6 +87,7 @@ class Endpoint : public EndpointBase {
 
   int sock = -1;
   io_uring ring;
+  Buffers &buffers;
 };
 
 }  // namespace tcp
