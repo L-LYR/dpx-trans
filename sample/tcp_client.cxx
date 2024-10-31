@@ -38,9 +38,9 @@ int main(int argc, char* argv[]) {
                                          .remote_port = args::get(remote_port),
                                      });
 
-  auto call_fn = [&]() {
-    for (auto i = 0; i < 1000; i++) {
-      auto echo_resp = t.call<EchoRpc>(payload_4k);
+  auto call_fn = [&](uint32_t id) {
+    for (auto i = 0; i < 10000; i++) {
+      auto echo_resp = t.call<EchoRpc>(PayloadType{.id = id, .message = "???"});
       auto resp = echo_resp.get();
     }
   };
@@ -48,10 +48,9 @@ int main(int argc, char* argv[]) {
   auto fn = [&]() {
     TransportGuard g(t);
     Timer tt;
-    std::vector<boost::fibers::fiber> callers;
-    callers.reserve(16);
+    std::vector<boost::fibers::fiber> callers(32);
     for (auto i = 0uz; i < callers.capacity(); ++i) {
-      callers.emplace_back(call_fn);
+      callers[i] = boost::fibers::fiber(call_fn, uint32_t(i));
     }
     for (auto& caller : callers) {
       caller.join();

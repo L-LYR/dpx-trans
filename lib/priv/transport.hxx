@@ -1,5 +1,7 @@
 #pragma once
 
+#include <list>
+
 #include "concept/rpc.hxx"
 #include "priv/common.hxx"
 #include "priv/tcp/connection.hxx"
@@ -30,6 +32,9 @@ class Transport {
     requires(b == Backend::TCP)
       : info(info_), n_workers(n_workers_), buffers(n_workers, max_rpc_msg_size) {
     ctrl_e.prepare(buffers);
+    for (auto &buffer : buffers) {
+      usable_buffers.push_back(buffer);
+    }
     if (info.passive) {
       CtrlPathAcceptor(info.local_ip, info.local_port).associate({ctrl_e}).listen_and_accept();
     } else {
@@ -46,18 +51,21 @@ class Transport {
 
   template <Rpc Rpc>
   resp_future_t<Rpc> call(const req_t<Rpc> &r) {
-    // TODO buffer allocate, forbid use twice
     auto call_seq = seq++;
-    auto idx = call_seq % buffers.size();
-    auto &buf = buffers[idx];
+
+    while (usable_buffers.empty()) {
+      boost::this_fiber::yield();
+    }
+    auto &buf = usable_buffers.front().get();
+    usable_buffers.pop_front();
 
     auto serializer = Serializer(buf);
     serializer(call_seq, Rpc::id, r).or_throw();
 
-    TRACE("seq: {} id: {}", call_seq, Rpc::id);
-
+    TRACE("send with seq: {} id: {}", call_seq, Rpc::id);
     OpContext op_ctx;
-    auto n_write = ctrl_e.post_send(op_ctx, buf, serializer.position()).get();
+    TRACE("caller post write");
+    auto n_write = ctrl_e.post_send(op_ctx, buf).get();
     if (n_write <= 0) {
       die("Fail to write payload, errno: {}", -n_write);
     }
@@ -71,7 +79,8 @@ class Transport {
 
     boost::fibers::fiber([this, &buf]() {
       OpContext op_ctx;
-      auto n_read = ctrl_e.post_recv(op_ctx, buf, buf.size()).get();
+      TRACE("caller post recv");
+      auto n_read = ctrl_e.post_recv(op_ctx, buf).get();
       if (n_read <= 0) {
         die("Fail to read payload, errno: {}", -n_read);
       }
@@ -80,12 +89,14 @@ class Transport {
       int64_t seq = 0;
       rpc_id_t id = 0;
       deserializer(seq, id).or_throw();
+      TRACE("recv with seq: {} id: {}", seq, id);
       if (seq >= 0) {
         die("Payload is not response");
       }
       if (!(dispatch_response<rpcs>(-seq, id, deserializer) || ...)) {
         die("Mismatch rpc id, got {}", id);
       }
+      usable_buffers.push_back(buf);
     }).detach();
 
     return f;
@@ -129,6 +140,7 @@ class Transport {
       req_t<Rpc> req = {};
       deserializer(req).or_throw();
       resp_t<Rpc> resp = Rpc()(req);
+      TRACE("send seq: {}, id: {}", -seq, id);
       serializer(-seq, Rpc::id, resp).or_throw();
       return true;
     }
@@ -143,9 +155,9 @@ class Transport {
     buf.clear();
 
     {
-      TRACE("worker post recv");
+      TRACE("worker {} post recv", idx);
       OpContext ctx;
-      auto n_read = ctrl_e.post_recv(ctx, buf, buf.size()).get();
+      auto n_read = ctrl_e.post_recv(ctx, buf).get();
       if (n_read < 0) {
         die("Fail to read payload, errno: {}", -n_read);
       } else if (n_read == 0) {
@@ -156,7 +168,7 @@ class Transport {
         }
         return;
       }
-      TRACE("worker read: {}", n_read);
+      TRACE("worker {} read: {}", idx, n_read);
     }
 
     auto deserializer = Deserializer(buf);
@@ -166,7 +178,7 @@ class Transport {
 
     deserializer(seq, id).or_throw();
 
-    TRACE("seq: {} id: {}", seq, id);
+    TRACE("recv seq: {} id: {}", seq, id);
     if (seq < 0) {
       die("Payload is not request");
     }
@@ -177,13 +189,13 @@ class Transport {
     }
 
     {
-      TRACE("worker post send");
+      TRACE("worker {} post send", idx);
       OpContext ctx;
-      auto n_write = ctrl_e.post_send(ctx, buf, serializer.position()).get();
+      auto n_write = ctrl_e.post_send(ctx, buf).get();
       if (n_write < 0) {
         die("Fail to write payload, errno: {}", -n_write);
       }
-      TRACE("worker write: {}", n_write);
+      TRACE("worker {} write: {}", idx, n_write);
     }
   }
 
@@ -194,6 +206,7 @@ class Transport {
   size_t n_workers = -1;
   int64_t seq = 1;
   Buffers buffers;
+  std::list<std::reference_wrapper<BorrowedBuffer>> usable_buffers;
   std::unordered_map<int64_t, ContextBase *> outstanding_rpcs;
   CtrlPathEndpointType ctrl_e;
 };

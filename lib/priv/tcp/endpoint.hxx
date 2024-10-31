@@ -60,24 +60,19 @@ class Endpoint : public EndpointBase {
     return false;
   }
 
-  op_res_future_t post_recv(OpContext &ctx, BorrowedBuffer &buf, size_t nbytes) {
-    return post<Op::Recv>(ctx, buf, nbytes);
-  }
+  op_res_future_t post_recv(OpContext &ctx, BorrowedBuffer &buf) { return post<Op::Recv>(ctx, buf); }
 
-  op_res_future_t post_send(OpContext &ctx, BorrowedBuffer &buf, size_t nbytes) {
-    return post<Op::Send>(ctx, buf, nbytes);
-  }
+  op_res_future_t post_send(OpContext &ctx, BorrowedBuffer &buf) { return post<Op::Send>(ctx, buf); }
 
  private:
   template <Op op>
-  op_res_future_t post(OpContext &ctx, BorrowedBuffer &buf, size_t nbytes) {
+  op_res_future_t post(OpContext &ctx, BorrowedBuffer &buf) {
     assert(running());
-    assert(nbytes > 0 && nbytes <= buf.size());
     auto sqe = io_uring_get_sqe(&ring);
     if constexpr (op == Op::Send) {
-      io_uring_prep_write_fixed(sqe, sock, buf.data(), nbytes, 0, 0);
+      io_uring_prep_write_fixed(sqe, sock, buf.data(), buf.size(), 0, 0);
     } else if constexpr (op == Op::Recv) {
-      io_uring_prep_read_fixed(sqe, sock, buf.data(), nbytes, 0, 0);
+      io_uring_prep_read_fixed(sqe, sock, buf.data(), buf.size(), 0, 0);
     } else {
       static_unreachable;
     }
