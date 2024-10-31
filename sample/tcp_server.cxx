@@ -11,6 +11,7 @@ int main(int argc, char* argv[]) {
   args::HelpFlag help(p, "help", "Display this help menu", {'h', "help"});
   args::ValueFlag<std::string> local_ip(p, "local ip", "local ip", {"local_ip"}, args::Options::Required);
   args::ValueFlag<uint16_t> local_port(p, "local port", "local port", {"local_port"}, args::Options::Required);
+  args::ValueFlag<uint32_t> n_worker(p, "n worker", "n worker", {"n_worker"}, 1);
 
   try {
     p.ParseCLI(argc, argv);
@@ -26,7 +27,7 @@ int main(int argc, char* argv[]) {
   }
 
   auto echo = [&]() {
-    Transport<Backend::TCP, EchoRpc> t(32, 4096,
+    Transport<Backend::TCP, EchoRpc> t(args::get(n_worker), 4096,
                                        ConnectionInfo{
                                            .passive = true,
                                            .local_ip = args::get(local_ip),

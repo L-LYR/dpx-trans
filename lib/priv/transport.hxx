@@ -9,6 +9,9 @@
 #include "util/logger.hxx"
 #include "util/serialization.hxx"
 
+using BorrowedBufferRef = std::reference_wrapper<BorrowedBuffer>;
+using BorrowedBufferRefQueue = std::list<BorrowedBufferRef>;
+
 struct ConnectionInfo {
   bool passive;
   std::string remote_ip = "";
@@ -33,7 +36,7 @@ class Transport {
       : info(info_), n_workers(n_workers_), buffers(n_workers, max_rpc_msg_size) {
     ctrl_e.prepare(buffers);
     for (auto &buffer : buffers) {
-      usable_buffers.push_back(buffer);
+      vacant_buffers.push_back(buffer);
     }
     if (info.passive) {
       CtrlPathAcceptor(info.local_ip, info.local_port).associate({ctrl_e}).listen_and_accept();
@@ -53,11 +56,11 @@ class Transport {
   resp_future_t<Rpc> call(const req_t<Rpc> &r) {
     auto call_seq = seq++;
 
-    while (usable_buffers.empty()) {
+    while (vacant_buffers.empty()) {
       boost::this_fiber::yield();
     }
-    auto &buf = usable_buffers.front().get();
-    usable_buffers.pop_front();
+    auto &buf = vacant_buffers.front().get();
+    vacant_buffers.pop_front();
 
     auto serializer = Serializer(buf);
     serializer(call_seq, Rpc::id, r).or_throw();
@@ -96,7 +99,7 @@ class Transport {
       if (!(dispatch_response<rpcs>(-seq, id, deserializer) || ...)) {
         die("Mismatch rpc id, got {}", id);
       }
-      usable_buffers.push_back(buf);
+      vacant_buffers.push_back(buf);
     }).detach();
 
     return f;
@@ -206,9 +209,12 @@ class Transport {
   size_t n_workers = -1;
   int64_t seq = 1;
   Buffers buffers;
-  std::list<std::reference_wrapper<BorrowedBuffer>> usable_buffers;
+
+  BorrowedBufferRefQueue vacant_buffers;
   std::unordered_map<int64_t, ContextBase *> outstanding_rpcs;
+
   CtrlPathEndpointType ctrl_e;
+  DataPathEndpointType data_e;
 };
 
 template <Backend b, Rpc... rpcs>
