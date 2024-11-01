@@ -77,6 +77,7 @@ void Acceptor::listen_and_accept() {
     TRACE(get_socket_connection_info(client_sock));
     endpoint.get().sock = client_sock;
   }
+  pending_endpoints.clear();
 }
 
 Acceptor &Acceptor::associate(EndpointRefs &&es) {

@@ -1,16 +1,15 @@
-sample_deps = basic_deps + args_dep
-sample_incs = basic_incs
+sample_deps = [dpx_trans_dep, args_dep]
 
 samples = [
     ['zpp_bits_sample', [], []],
-    ['tcp_server', [], [uring_dep]],
-    ['tcp_client', [], [uring_dep]],
-    # ['rdma_server', [], rdma_deps],
-    # ['rdma_client', [], rdma_deps],
-    ['doca_comch_ctrl_path_client', [], [doca_deps]],
-    ['doca_comch_ctrl_path_server', [], [doca_deps]],
-    ['doca_comch_data_path_client', [], [doca_deps]],
-    ['doca_comch_data_path_server', [], [doca_deps]],
+    ['tcp_server', [], []],
+    ['tcp_client', [], []],
+    ['rdma_server', [], []],
+    ['rdma_client', [], []],
+    ['doca_comch_ctrl_path_client', [], []],
+    ['doca_comch_ctrl_path_server', [], []],
+    ['doca_comch_data_path_client', [], []],
+    ['doca_comch_data_path_server', [], []],
 ]
 
 foreach sample : samples
@@ -19,8 +18,6 @@ foreach sample : samples
         sample[0],
         files([sample[0] + '.cxx'] + sample[1]),
         dependencies: sample_deps + sample[2],
-        include_directories: sample_incs,
-        link_with: dpx_trans,
     )
 
 endforeach

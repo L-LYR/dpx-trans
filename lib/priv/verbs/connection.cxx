@@ -114,6 +114,7 @@ void Acceptor::listen_and_accept() {
     endpoint.c.wait_and_ack(RDMA_CM_EVENT_ESTABLISHED);
     TRACE(get_cm_connection_info(endpoint.id));
   }
+  pending_endpoints.clear();
 }
 
 Connector ::Connector(std::string remote_ip, uint16_t remote_port)

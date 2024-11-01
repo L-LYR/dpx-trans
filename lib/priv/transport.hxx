@@ -6,6 +6,8 @@
 #include "priv/common.hxx"
 #include "priv/tcp/connection.hxx"
 #include "priv/tcp/endpoint.hxx"
+#include "priv/verbs/connection.hxx"
+#include "priv/verbs/endpoint.hxx"
 #include "util/logger.hxx"
 #include "util/serialization.hxx"
 
@@ -22,17 +24,20 @@ struct ConnectionInfo {
 
 template <Backend b, Rpc... rpcs>
 class Transport {
-  using CtrlPathEndpointType = std::conditional_t<b == Backend::TCP, tcp::Endpoint, void>;
-  using CtrlPathConnector = std::conditional_t<b == Backend::TCP, tcp::Connector, void>;
-  using CtrlPathAcceptor = std::conditional_t<b == Backend::TCP, tcp::Acceptor, void>;
+  using CtrlPathEndpointType = std::conditional_t<b == Backend::TCP, tcp::Endpoint,
+                                                  std::conditional_t<b == Backend::Verbs, verbs::Endpoint, void>>;
+  using CtrlPathConnector = std::conditional_t<b == Backend::TCP, tcp::Connector,
+                                               std::conditional_t<b == Backend::Verbs, verbs::Connector, void>>;
+  using CtrlPathAcceptor = std::conditional_t<b == Backend::TCP, tcp::Acceptor,
+                                              std::conditional_t<b == Backend::Verbs, verbs::Acceptor, void>>;
 
   template <Backend, Rpc...>
   friend class TransportGuard;
 
  public:
   Transport(uint32_t n_workers_, uint32_t max_rpc_msg_size, const ConnectionInfo &info_)
-    requires(b == Backend::TCP)
-      : info(info_), n_workers(n_workers_), buffers(n_workers, max_rpc_msg_size), ctrl_e(buffers) {
+    requires(b == Backend::TCP || b == Backend::Verbs)
+      : info(info_), n_workers(n_workers_), buffers(n_workers * 2, max_rpc_msg_size), ctrl_e(buffers) {
     ctrl_e.prepare();
     for (auto &buffer : buffers) {
       vacant_buffers.push_back(buffer);
@@ -54,52 +59,50 @@ class Transport {
   template <Rpc Rpc>
   resp_future_t<Rpc> call(const req_t<Rpc> &r) {
     auto call_seq = seq++;
-
-    while (vacant_buffers.empty()) {
-      boost::this_fiber::yield();
+    {
+      auto recv_ctx = new OpContext;
+      TRACE("caller post recv");
+      auto recv_buf = acquire_buffer();
+      auto n_read_f = ctrl_e.post_recv(*recv_ctx, recv_buf);
+      boost::fibers::fiber([this, recv_buf = std::move(recv_buf), n_read_f = std::move(n_read_f), recv_ctx]() mutable {
+        auto n_read = n_read_f.get();
+        if (n_read <= 0) {
+          die("Fail to read payload, errno: {}", -n_read);
+        }
+        TRACE("caller read {}", n_read);
+        auto deserializer = Deserializer(recv_buf);
+        int64_t seq = 0;
+        rpc_id_t id = 0;
+        deserializer(seq, id).or_throw();
+        TRACE("recv with seq: {} id: {}", seq, id);
+        if (seq >= 0) {
+          die("Payload is not response");
+        }
+        if (!(dispatch_response<rpcs>(-seq, id, deserializer) || ...)) {
+          die("Mismatch rpc id, got {}", id);
+        }
+        release_buffer(recv_buf);
+        delete recv_ctx;
+      }).detach();
     }
-    auto &buf = vacant_buffers.front().get();
-    vacant_buffers.pop_front();
 
-    auto serializer = Serializer(buf);
+    OpContext send_ctx;
+    auto send_buf = acquire_buffer();
+    auto serializer = Serializer(send_buf);
     serializer(call_seq, Rpc::id, r).or_throw();
-
-    TRACE("send with seq: {} id: {}", call_seq, Rpc::id);
-    OpContext op_ctx;
     TRACE("caller post write");
-    auto n_write = ctrl_e.post_send(op_ctx, buf).get();
+    auto n_write_f = ctrl_e.post_send(send_ctx, send_buf, serializer.position());
+    TRACE("send with seq: {} id: {}", call_seq, Rpc::id);
+    auto rpc_ctx = new RpcContext<Rpc>;
+    resp_future_t<Rpc> f = rpc_ctx->resp.get_future();
+    [[maybe_unused]] auto [_, ok] = outstanding_rpcs.emplace(call_seq, rpc_ctx);
+    assert(ok);
+    auto n_write = n_write_f.get();
     if (n_write <= 0) {
       die("Fail to write payload, errno: {}", -n_write);
     }
     TRACE("caller write {}", n_write);
-
-    auto rpc_ctx = new RpcContext<Rpc>;
-    resp_future_t<Rpc> f = rpc_ctx->resp.get_future();
-
-    [[maybe_unused]] auto [_, ok] = outstanding_rpcs.emplace(call_seq, rpc_ctx);
-    assert(ok);
-
-    boost::fibers::fiber([this, &buf]() {
-      OpContext op_ctx;
-      TRACE("caller post recv");
-      auto n_read = ctrl_e.post_recv(op_ctx, buf).get();
-      if (n_read <= 0) {
-        die("Fail to read payload, errno: {}", -n_read);
-      }
-      TRACE("caller read {}", n_read);
-      auto deserializer = Deserializer(buf);
-      int64_t seq = 0;
-      rpc_id_t id = 0;
-      deserializer(seq, id).or_throw();
-      TRACE("recv with seq: {} id: {}", seq, id);
-      if (seq >= 0) {
-        die("Payload is not response");
-      }
-      if (!(dispatch_response<rpcs>(-seq, id, deserializer) || ...)) {
-        die("Mismatch rpc id, got {}", id);
-      }
-      vacant_buffers.push_back(buf);
-    }).detach();
+    release_buffer(send_buf);
 
     return f;
   }
@@ -193,7 +196,7 @@ class Transport {
     {
       TRACE("worker {} post send", idx);
       OpContext ctx;
-      auto n_write = ctrl_e.post_send(ctx, buf).get();
+      auto n_write = ctrl_e.post_send(ctx, buf, serializer.position()).get();
       if (n_write < 0) {
         die("Fail to write payload, errno: {}", -n_write);
       }
@@ -201,14 +204,24 @@ class Transport {
     }
   }
 
+  BorrowedBufferRef acquire_buffer() {
+    while (vacant_buffers.empty()) {
+      boost::this_fiber::yield();
+    }
+    auto &buf = vacant_buffers.front().get();
+    vacant_buffers.pop_front();
+    return buf;
+  }
+  void release_buffer(const BorrowedBufferRef &buf) { vacant_buffers.push_back(buf); }
+
   bool progress() { return ctrl_e.progress(); }
 
   ConnectionInfo info;
 
   size_t n_workers = -1;
   int64_t seq = 1;
-  Buffers buffers;
 
+  Buffers buffers;
   BorrowedBufferRefQueue vacant_buffers;
   std::unordered_map<int64_t, ContextBase *> outstanding_rpcs;
 
@@ -223,7 +236,8 @@ class TransportGuard : Noncopyable, Nonmovable {
     poller = boost::fibers::fiber([this]() {
       while (!(t.outstanding_rpcs.empty() && exit)) {
         if (!t.progress()) {
-          boost::this_fiber::sleep_for(100ns);
+          // boost::this_fiber::sleep_for(10ns);
+          boost::this_fiber::yield();
         }
       }
     });
