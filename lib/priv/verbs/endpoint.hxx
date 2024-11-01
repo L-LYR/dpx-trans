@@ -16,8 +16,7 @@ struct MRHandle {
 };
 
 class Endpoint : public EndpointBase {
-  friend class Acceptor;
-  friend class Connector;
+  friend class ConnectionHandle;
 
  public:
   Endpoint(Buffers& buffers_);
@@ -39,8 +38,7 @@ class Endpoint : public EndpointBase {
   void setup_resources();
   void setup_remote_param(const rdma_conn_param& remote_);
 
-  EventChannel c;
-  rdma_cm_id* id = nullptr;
+  rdma_cm_id* id = nullptr;  // not own, just borrowed
   Buffers& buffers;
   ibv_cq* cq = nullptr;
   ibv_pd* pd = nullptr;

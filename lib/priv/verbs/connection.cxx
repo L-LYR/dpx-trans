@@ -9,25 +9,31 @@
 
 namespace verbs {
 
-EventChannel::EventChannel(rdma_event_channel* p_) : own(false), p(p_) {}
+EventChannel::EventChannel(rdma_event_channel* p_) : p(p_) {}
 
-EventChannel::EventChannel() : own(true) {
+EventChannel::EventChannel() {
   if (p = rdma_create_event_channel(); p == nullptr) {
     die("Fail to create event channel, errno: {}", errno);
   }
 }
 
 EventChannel::~EventChannel() {
-  if (own && p != nullptr) {
+  if (p != nullptr) {
     rdma_destroy_event_channel(p);
   }
 }
 
-[[nodiscard("Must not ignore the cm event")]] rdma_cm_event* EventChannel::wait(rdma_cm_event_type expected) {
+[[nodiscard("Must not ignore the cm event")]] rdma_cm_event* EventChannel::get_event() {
   rdma_cm_event* e = nullptr;
   if (auto ec = rdma_get_cm_event(p, &e); ec < 0) {
-    die("Fail to get expected event {}, errno: {}", rdma_event_str(expected), errno);
-  } else if (e->status != 0) {
+    die("Fail to get event, errno: {}", errno);
+  }
+  return e;
+}
+
+[[nodiscard("Must not ignore the cm event")]] rdma_cm_event* EventChannel::wait(rdma_cm_event_type expected) {
+  auto e = get_event();
+  if (e->status != 0) {
     die("Get a bad event {}, status: {}, expect {}", rdma_event_str(e->event), e->status, rdma_event_str(expected));
   } else if (e->event != expected) {
     die("Expect event {}, but get event {}", rdma_event_str(expected), rdma_event_str(e->event));
@@ -76,10 +82,9 @@ std::string get_cm_connection_info(rdma_cm_id* id) {
 
 }  // namespace
 
-Acceptor::Acceptor(std::string local_ip, uint16_t local_port)
-    : c(), id(setup_and_bind(Side::ServerSide, c, local_ip, local_port)) {}
+ConnectionHandle::ConnectionHandle(const ConnectionParam& param) : ConnectionHandleBase(param) {}
 
-Acceptor::~Acceptor() {
+ConnectionHandle::~ConnectionHandle() {
   if (id != nullptr) {
     if (auto ec = rdma_destroy_id(id); ec < 0) {
       die("Fail to destroy listening id, errno: {}", errno);
@@ -87,65 +92,90 @@ Acceptor::~Acceptor() {
   }
 }
 
-Acceptor& Acceptor::associate(EndpointRefs&& es) {
-  pending_endpoints.insert(pending_endpoints.end(), std::make_move_iterator(es.begin()),
-                           std::make_move_iterator(es.end()));
-  return *this;
-}
-
-void Acceptor::listen_and_accept() {
-  if (auto ec = rdma_listen(id, 10); ec < 0) {
+void ConnectionHandle::listen_and_accept() {
+  id = setup_and_bind(Side::ServerSide, c, param.local_ip, param.local_port);
+  if (auto ec = rdma_listen(id, pending_endpoints.size()); ec < 0) {
     die("Fail to listen, errno: {}", errno);
   }
-  for (auto& er : pending_endpoints) {
-    auto& endpoint = er.get();
-    auto e = c.wait(RDMA_CM_EVENT_CONNECT_REQUEST);
-    endpoint.id = e->id;
-    endpoint.setup_remote_param(e->param.conn);
-    c.ack(e);
-
-    if (auto ec = rdma_migrate_id(endpoint.id, endpoint.c.p); ec < 0) {
-      die("Fail to migrate cm id to new event channel, errno: {}", errno);
-    }
-    endpoint.setup_resources();
-    if (auto ec = rdma_accept(endpoint.id, &endpoint.local); ec < 0) {
+  std::ranges::for_each(pending_endpoints, [this](Endpoint& e) {
+    auto event = c.wait(RDMA_CM_EVENT_CONNECT_REQUEST);
+    e.id = event->id;
+    e.setup_remote_param(event->param.conn);
+    e.setup_resources();
+    if (auto ec = rdma_accept(e.id, &e.local); ec < 0) {
       die("Fail to accept connection, errno: {}", errno);
     }
-    endpoint.c.wait_and_ack(RDMA_CM_EVENT_ESTABLISHED);
-    TRACE(get_cm_connection_info(endpoint.id));
-  }
-  pending_endpoints.clear();
+    e.id->context = &e;
+    c.ack(event);
+    c.wait_and_ack(RDMA_CM_EVENT_ESTABLISHED);
+    TRACE(get_cm_connection_info(e.id));
+    e.run();
+  });
 }
 
-Connector ::Connector(std::string remote_ip, uint16_t remote_port)
-    : remote_addr_in({
-          .sin_family = AF_INET,
-          .sin_port = htons(remote_port),
-          .sin_addr = {.s_addr = inet_addr(remote_ip.data())},
-          .sin_zero = {},
-      }) {}
+void ConnectionHandle::wait_for_disconnect() {
+  uint32_t n_endpoints = pending_endpoints.size();
+  uint32_t n_disconnected = 0;
+  while (n_disconnected < n_endpoints) {
+    auto e = c.get_event();  // block call
+    switch (e->event) {
+      case RDMA_CM_EVENT_DISCONNECTED: {
+        auto endpoint = reinterpret_cast<Endpoint*>(e->id->context);
+        endpoint->stop();
+        if (auto ec = rdma_disconnect(e->id); ec < 0) {
+          die("Fail to disconnect, errno: {}", errno);
+        }
+        n_disconnected++;
+        TRACE("Stop");
+      } break;
+      default: {
+        die("Unexpected event {}", rdma_event_str(e->event));
+      }
+    }
+    c.ack(e);
+  }
+  TRACE("Shutdown");
+}
 
-void Connector::connect(Endpoint& endpoint, std::string local_ip, uint16_t local_port) {
-  auto& c = endpoint.c;
-  auto& id = endpoint.id;
-  id = setup_and_bind(Side::ClientSide, c, local_ip, local_port);
-  if (auto ec = rdma_resolve_addr(endpoint.id, nullptr, reinterpret_cast<sockaddr*>(&remote_addr_in), 10); ec < 0) {
-    die("Fail to resolve addr {}, errno: {}", inet_ntoa(remote_addr_in.sin_addr), ntohs(remote_addr_in.sin_port),
-        errno);
-  }
-  c.wait_and_ack(RDMA_CM_EVENT_ADDR_RESOLVED);
-  if (auto ec = rdma_resolve_route(id, 10); ec < 0) {
-    die("Fail to resolve route, errno: {}", errno);
-  }
-  c.wait_and_ack(RDMA_CM_EVENT_ROUTE_RESOLVED);
-  endpoint.setup_resources();
-  if (auto ec = rdma_connect(id, &endpoint.local); ec < 0) {
-    die("Fail to establish connection, errno: {}", errno);
-  }
-  auto e = c.wait(RDMA_CM_EVENT_ESTABLISHED);
-  endpoint.setup_remote_param(e->param.conn);
-  c.ack(e);
-  TRACE(get_cm_connection_info(id));
+void ConnectionHandle::connect() {
+  auto remote_addr_in = sockaddr_in{
+      .sin_family = AF_INET,
+      .sin_port = htons(param.remote_port),
+      .sin_addr = {.s_addr = inet_addr(param.remote_ip.data())},
+      .sin_zero = {},
+  };
+  std::ranges::for_each(pending_endpoints, [this, i = 0, &remote_addr_in](Endpoint& e) mutable {
+    e.id = setup_and_bind(Side::ClientSide, c, param.local_ip, (param.local_port != 0 ? param.local_port + i : 0));
+    if (auto ec = rdma_resolve_addr(e.id, nullptr, reinterpret_cast<sockaddr*>(&remote_addr_in), 10); ec < 0) {
+      die("Fail to resolve addr {}:{}, errno: {}", param.remote_ip, param.remote_port, errno);
+    }
+    c.wait_and_ack(RDMA_CM_EVENT_ADDR_RESOLVED);
+    if (auto ec = rdma_resolve_route(e.id, 10); ec < 0) {
+      die("Fail to resolve route, errno: {}", errno);
+    }
+    c.wait_and_ack(RDMA_CM_EVENT_ROUTE_RESOLVED);
+    e.setup_resources();
+    if (auto ec = rdma_connect(e.id, &e.local); ec < 0) {
+      die("Fail to establish connection, errno: {}", errno);
+    }
+    auto event = c.wait(RDMA_CM_EVENT_ESTABLISHED);
+    e.setup_remote_param(event->param.conn);
+    c.ack(event);
+    TRACE(get_cm_connection_info(e.id));
+    e.run();
+    i++;
+  });
+}
+
+void ConnectionHandle::disconnect() {
+  TRACE("Closing");
+  std::ranges::for_each(pending_endpoints, [](Endpoint& e) {
+    e.stop();
+    if (auto ec = rdma_disconnect(e.id); ec < 0) {
+      die("Fail to disconnect, errno: {}", errno);
+    }
+  });
+  TRACE("Shutdown");
 }
 
 }  // namespace verbs

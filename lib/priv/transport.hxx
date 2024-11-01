@@ -6,8 +6,8 @@
 #include "priv/common.hxx"
 #include "priv/tcp/connection.hxx"
 #include "priv/tcp/endpoint.hxx"
-// #include "priv/verbs/connection.hxx"
-// #include "priv/verbs/endpoint.hxx"
+#include "priv/verbs/connection.hxx"
+#include "priv/verbs/endpoint.hxx"
 #include "util/fatal.hxx"
 #include "util/logger.hxx"
 #include "util/serialization.hxx"
@@ -17,8 +17,11 @@ using BorrowedBufferRefQueue = std::list<BorrowedBufferRef>;
 
 template <Backend b, Rpc... rpcs>
 class Transport {
-  using CtrlPathEndpointType = std::conditional_t<b == Backend::TCP, tcp::Endpoint, void>;
-  using ConnectionHandleType = std::conditional_t<b == Backend::TCP, tcp::ConnectionHandle, void>;
+  using CtrlPathEndpointType = std::conditional_t<b == Backend::TCP, tcp::Endpoint,
+                                                  std::conditional_t<b == Backend::Verbs, verbs::Endpoint, void>>;
+  using ConnectionHandleType =
+      std::conditional_t<b == Backend::TCP, tcp::ConnectionHandle,
+                         std::conditional_t<b == Backend::Verbs, verbs::ConnectionHandle, void>>;
 
   template <Backend, Rpc...>
   friend class TransportGuard;

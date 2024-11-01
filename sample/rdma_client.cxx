@@ -59,10 +59,7 @@ int main(int argc, char* argv[]) {
     INFO("{}us", tt.elapsed_us());
   };
 
-  std::thread t1(fn);
-  t1.join();
-  std::thread t2(fn);
-  t2.join();
+  std::jthread t1(fn);
 
   return 0;
 }

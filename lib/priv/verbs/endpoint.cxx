@@ -85,18 +85,14 @@ Endpoint::Endpoint(Buffers& buffers_) : buffers(buffers_) {}
 
 Endpoint::~Endpoint() {
   assert(stopped());
-  if (auto ec = rdma_disconnect(id); ec < 0) {
-    die("Fail to disconnect, errno: {}", errno);
-  }
-  c.wait_and_ack(RDMA_CM_EVENT_DISCONNECTED);
-  if (id != nullptr) {
-    if (auto ec = rdma_destroy_id(id); ec < 0) {
-      die("Fail to destroy cm id, errno: {}", errno);
-    }
-  }
   if (qp != nullptr) {
     if (auto ec = ibv_destroy_qp(qp); ec != 0) {
       die("Fail to destroy qp, errno {}", errno);
+    }
+  }
+  if (id != nullptr) {
+    if (auto ec = rdma_destroy_id(id); ec < 0) {
+      die("Fail to destroy cm id, errno: {}", errno);
     }
   }
   if (cq != nullptr) {

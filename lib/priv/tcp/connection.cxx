@@ -112,7 +112,7 @@ void ConnectionHandle::connect() {
   if (auto ec = ::connect(conn_sock, reinterpret_cast<sockaddr *>(&remote_addr_in), sizeof(remote_addr_in)); ec < 0) {
     die("Fail to connect with peer {}:{}, errno: {}", param.remote_ip, param.remote_port, errno);
   }
-  std::ranges::for_each(pending_endpoints, [this, &remote_addr_in, i = 1](Endpoint &e) mutable {
+  std::ranges::for_each(pending_endpoints, [this, &remote_addr_in, i = 0](Endpoint &e) mutable {
     e.sock = setup_and_bind(param.local_ip, (param.local_port != 0 ? param.local_port + i : 0));
     if (auto ec = ::connect(e.sock, reinterpret_cast<sockaddr *>(&remote_addr_in), sizeof(remote_addr_in)); ec < 0) {
       die("Fail to connect with peer {}:{}, errno: {}", param.remote_ip, param.remote_port, errno);
@@ -130,8 +130,8 @@ void ConnectionHandle::disconnect() {
   write(conn_sock, &c, 1);
   TRACE("Closing");
   std::ranges::for_each(pending_endpoints, [](Endpoint &e) {
-    close_socket(e.sock);
     e.stop();
+    close_socket(e.sock);
   });
   TRACE("Shutdown");
 }
