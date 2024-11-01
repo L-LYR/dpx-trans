@@ -52,7 +52,6 @@ op_res_future_t Endpoint::post_send(OpContext &ctx, BorrowedBuffer &buf, [[maybe
 // Because of the tcp stick package problem, we here send the whole buffer in one post.
 template <Op op>
 op_res_future_t Endpoint::post(OpContext &ctx, BorrowedBuffer &buf) {
-  assert(running());
   auto sqe = io_uring_get_sqe(&ring);
   if constexpr (op == Op::Send) {
     io_uring_prep_write_fixed(sqe, sock, buf.data(), buf.size(), 0, 0);

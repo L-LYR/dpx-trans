@@ -97,8 +97,6 @@ void ConnectionHandle::wait_for_disconnect() {
     close_socket(e.sock);
     e.stop();
   });
-  TRACE("Issue a shutdown event");
-  write(conn_sock, &c, 1);
   TRACE("Shutdown");
 }
 
@@ -130,8 +128,6 @@ void ConnectionHandle::disconnect() {
   char c = 'x';
   TRACE("Issue a disconnection event");
   write(conn_sock, &c, 1);
-  TRACE("Server closed");
-  read(conn_sock, &c, 1);
   TRACE("Closing");
   std::ranges::for_each(pending_endpoints, [](Endpoint &e) {
     close_socket(e.sock);
