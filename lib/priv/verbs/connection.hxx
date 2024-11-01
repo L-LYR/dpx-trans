@@ -9,8 +9,6 @@
 namespace verbs {
 
 class Endpoint;
-using EndpointRef = std::reference_wrapper<Endpoint>;
-using EndpointRefs = std::vector<EndpointRef>;
 
 class EventChannel : Noncopyable, Nonmovable {
  public:
@@ -25,15 +23,14 @@ class EventChannel : Noncopyable, Nonmovable {
   rdma_event_channel* p = nullptr;
 };
 
-class Acceptor : public ConnectionHandleBase<Side::ServerSide> {
+class Acceptor : public ConnectionHandleBase<Acceptor, Endpoint> {
  public:
   Acceptor(std::string local_ip, uint16_t local_port);
   ~Acceptor();
 
  public:
-  Acceptor& associate(EndpointRefs&& es);
-
   void listen_and_accept();
+  void wait_for_disconnect();
 
  private:
   EventChannel c;
@@ -41,7 +38,7 @@ class Acceptor : public ConnectionHandleBase<Side::ServerSide> {
   EndpointRefs pending_endpoints;
 };
 
-class Connector : public ConnectionHandleBase<Side::ClientSide> {
+class Connector : public ConnectionHandleBase<Connector, Endpoint> {
  public:
   Connector(std::string remote_ip, uint16_t remote_port);
   ~Connector() = default;

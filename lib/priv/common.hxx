@@ -83,44 +83,68 @@ class EndpointBase : Noncopyable, Nonmovable {
     TRACE("Endpoint status change: Running -> Stopped");
   }
 
-  Status s;
+  std::atomic<Status> s;
 };
 
-template <Side side>
+struct ConnectionParam {
+  bool passive;
+  std::string remote_ip = "";
+  std::string local_ip = "";
+  uint16_t remote_port = 0;
+  uint16_t local_port = 0;
+};
+
+template <typename Derived, typename Endpoint>
 class ConnectionHandleBase : Noncopyable, Nonmovable {
  public:
+  using EndpointRef = std::reference_wrapper<Endpoint>;
+  using EndpointRefs = std::vector<EndpointRef>;
+
   ~ConnectionHandleBase() = default;
 
+  Derived &associate(Endpoint &e) {
+    pending_endpoints.emplace_back(e);
+    return *static_cast<Derived *>(this);
+  }
+  Derived &associate(EndpointRefs &&es) {
+    pending_endpoints.insert(pending_endpoints.end(), std::make_move_iterator(es.begin()),
+                             std::make_move_iterator(es.end()));
+    return *static_cast<Derived *>(this);
+  }
+
  protected:
-  ConnectionHandleBase() = default;
+  ConnectionHandleBase(const ConnectionParam &param_) : param(param_) {}
+
+  const ConnectionParam &param;
+  EndpointRefs pending_endpoints;
 };
 
 template <>
-struct std::formatter<Side> : std::formatter<const char*> {
+struct std::formatter<Side> : std::formatter<const char *> {
   template <typename Context>
   Context::iterator format(Side s, Context out) const {
     switch (s) {
       case Side::ServerSide:
-        return std::formatter<const char*>::format("server", out);
+        return std::formatter<const char *>::format("server", out);
       case Side::ClientSide:
-        return std::formatter<const char*>::format("client", out);
+        return std::formatter<const char *>::format("client", out);
     }
   }
 };
 
 template <>
-struct std::formatter<Status> : std::formatter<const char*> {
+struct std::formatter<Status> : std::formatter<const char *> {
   template <typename Context>
   Context::iterator format(Status s, Context out) const {
     switch (s) {
       case Status::Idle:
-        return std::formatter<const char*>::format("Idle", out);
+        return std::formatter<const char *>::format("Idle", out);
       case Status::Ready:
-        return std::formatter<const char*>::format("Ready", out);
+        return std::formatter<const char *>::format("Ready", out);
       case Status::Running:
-        return std::formatter<const char*>::format("Running", out);
+        return std::formatter<const char *>::format("Running", out);
       case Status::Stopped:
-        return std::formatter<const char*>::format("Stopped", out);
+        return std::formatter<const char *>::format("Stopped", out);
     }
   }
 };

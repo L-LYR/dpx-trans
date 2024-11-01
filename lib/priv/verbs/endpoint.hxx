@@ -6,7 +6,6 @@
 #include "memory/simple_buffer.hxx"
 #include "priv/common.hxx"
 #include "priv/verbs/connection.hxx"
-#include "util/fatal.hxx"
 
 namespace verbs {
 
@@ -34,13 +33,7 @@ class Endpoint : public EndpointBase {
 
   void run() { EndpointBase::run(); }
 
-  void stop() {
-    if (auto ec = rdma_disconnect(id); ec < 0) {
-      die("Fail to disconnect, errno: {}", errno);
-    }
-    c.wait_and_ack(RDMA_CM_EVENT_DISCONNECTED);
-    EndpointBase::stop();
-  }
+  void stop() { EndpointBase::stop(); }
 
  private:
   void setup_resources();

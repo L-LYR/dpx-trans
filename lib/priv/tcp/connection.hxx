@@ -2,42 +2,27 @@
 
 #include <netinet/in.h>
 
-#include <vector>
-
 #include "priv/common.hxx"
 
 namespace tcp {
 
 class Endpoint;
 
-using EndpointRef = std::reference_wrapper<Endpoint>;
-
-using EndpointRefs = std::vector<EndpointRef>;
-
-class Acceptor : ConnectionHandleBase<Side::ServerSide> {
+class ConnectionHandle : public ConnectionHandleBase<ConnectionHandle, Endpoint> {
  public:
-  Acceptor(std::string local_ip, uint16_t local_port);
-  ~Acceptor();
+  ConnectionHandle(const ConnectionParam &info_);
+  ~ConnectionHandle();
 
-  Acceptor &associate(EndpointRefs &&endpoints);
-
+  // passive side
   void listen_and_accept();
+  void wait_for_disconnect();
+
+  // active side
+  void connect();
+  void disconnect();
 
  private:
-  EndpointRefs pending_endpoints;
-  int sock = -1;
-};
-
-class Connector : ConnectionHandleBase<Side::ClientSide> {
- public:
-  Connector(std::string remote_ip, uint16_t remote_port);
-
-  ~Connector() = default;
-
-  void connect(Endpoint &e, std::string local_ip = "", uint16_t local_port = 0);
-
- private:
-  sockaddr_in remote_addr_in = {};
+  int conn_sock = -1;
 };
 
 }  // namespace tcp

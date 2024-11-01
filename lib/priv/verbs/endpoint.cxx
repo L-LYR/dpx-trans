@@ -12,20 +12,23 @@ bool Endpoint::progress() {
   }
   if (ec == 1) {
     auto ctx = reinterpret_cast<OpContext*>(wc.wr_id);
-    if (wc.status != IBV_WC_SUCCESS) {
-      die("Meet error wc, status: {}", ibv_wc_status_str(wc.status));
-    }
-    switch (wc.opcode) {
-      case IBV_WC_RECV:
-      case IBV_WC_RECV_RDMA_WITH_IMM: {
-        ctx->op_res.set_value(wc.imm_data);
-      } break;
-      case IBV_WC_SEND: {
-        ctx->op_res.set_value(1);
-      } break;
-      default: {
-        die("Unsupported wc opcode {}", static_cast<int>(wc.opcode));
+    if (wc.status == IBV_WC_WR_FLUSH_ERR) {  // diconnected
+      ctx->op_res.set_value(0);
+    } else if (wc.status == IBV_WC_SUCCESS) {
+      switch (wc.opcode) {
+        case IBV_WC_RECV:
+        case IBV_WC_RECV_RDMA_WITH_IMM: {
+          ctx->op_res.set_value(wc.imm_data);
+        } break;
+        case IBV_WC_SEND: {
+          ctx->op_res.set_value(1);
+        } break;
+        default: {
+          die("Unexpected wc opcode {}", static_cast<int>(wc.opcode));
+        }
       }
+    } else {
+      die("Error wc, status: {}", ibv_wc_status_str(wc.status));
     }
     return true;
   }
@@ -82,6 +85,9 @@ Endpoint::Endpoint(Buffers& buffers_) : buffers(buffers_) {}
 
 Endpoint::~Endpoint() {
   assert(stopped());
+  if (auto ec = rdma_disconnect(id); ec < 0) {
+    die("Fail to disconnect, errno: {}", errno);
+  }
   c.wait_and_ack(RDMA_CM_EVENT_DISCONNECTED);
   if (id != nullptr) {
     if (auto ec = rdma_destroy_id(id); ec < 0) {
