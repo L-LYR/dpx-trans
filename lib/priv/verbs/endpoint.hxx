@@ -6,7 +6,6 @@
 #include "memory/simple_buffer.hxx"
 #include "priv/common.hxx"
 #include "priv/verbs/connection.hxx"
-#include "util/fatal.hxx"
 
 namespace verbs {
 
@@ -17,8 +16,7 @@ struct MRHandle {
 };
 
 class Endpoint : public EndpointBase {
-  friend class Acceptor;
-  friend class Connector;
+  friend class ConnectionHandle;
 
  public:
   Endpoint(Buffers& buffers_);
@@ -34,20 +32,13 @@ class Endpoint : public EndpointBase {
 
   void run() { EndpointBase::run(); }
 
-  void stop() {
-    if (auto ec = rdma_disconnect(id); ec < 0) {
-      die("Fail to disconnect, errno: {}", errno);
-    }
-    c.wait_and_ack(RDMA_CM_EVENT_DISCONNECTED);
-    EndpointBase::stop();
-  }
+  void stop() { EndpointBase::stop(); }
 
  private:
   void setup_resources();
   void setup_remote_param(const rdma_conn_param& remote_);
 
-  EventChannel c;
-  rdma_cm_id* id = nullptr;
+  rdma_cm_id* id = nullptr;  // not own, just borrowed
   Buffers& buffers;
   ibv_cq* cq = nullptr;
   ibv_pd* pd = nullptr;

@@ -6,10 +6,10 @@ samples = [
     ['tcp_client', [], []],
     ['rdma_server', [], []],
     ['rdma_client', [], []],
-    ['doca_comch_ctrl_path_client', [], []],
-    ['doca_comch_ctrl_path_server', [], []],
-    ['doca_comch_data_path_client', [], []],
-    ['doca_comch_data_path_server', [], []],
+    # ['doca_comch_ctrl_path_client', [], []],
+    # ['doca_comch_ctrl_path_server', [], []],
+    # ['doca_comch_data_path_client', [], []],
+    # ['doca_comch_data_path_server', [], []],
 ]
 
 foreach sample : samples

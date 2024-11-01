@@ -8,51 +8,48 @@
 #include "priv/tcp/endpoint.hxx"
 #include "priv/verbs/connection.hxx"
 #include "priv/verbs/endpoint.hxx"
+#include "util/fatal.hxx"
 #include "util/logger.hxx"
 #include "util/serialization.hxx"
 
 using BorrowedBufferRef = std::reference_wrapper<BorrowedBuffer>;
 using BorrowedBufferRefQueue = std::list<BorrowedBufferRef>;
 
-struct ConnectionInfo {
-  bool passive;
-  std::string remote_ip = "";
-  std::string local_ip = "";
-  uint16_t remote_port = 0;
-  uint16_t local_port = 0;
-};
-
 template <Backend b, Rpc... rpcs>
 class Transport {
   using CtrlPathEndpointType = std::conditional_t<b == Backend::TCP, tcp::Endpoint,
                                                   std::conditional_t<b == Backend::Verbs, verbs::Endpoint, void>>;
-  using CtrlPathConnector = std::conditional_t<b == Backend::TCP, tcp::Connector,
-                                               std::conditional_t<b == Backend::Verbs, verbs::Connector, void>>;
-  using CtrlPathAcceptor = std::conditional_t<b == Backend::TCP, tcp::Acceptor,
-                                              std::conditional_t<b == Backend::Verbs, verbs::Acceptor, void>>;
+  using ConnectionHandleType =
+      std::conditional_t<b == Backend::TCP, tcp::ConnectionHandle,
+                         std::conditional_t<b == Backend::Verbs, verbs::ConnectionHandle, void>>;
 
   template <Backend, Rpc...>
   friend class TransportGuard;
 
  public:
-  Transport(uint32_t n_workers_, uint32_t max_rpc_msg_size, const ConnectionInfo &info_)
+  Transport(uint32_t n_workers_, uint32_t max_rpc_msg_size, const ConnectionParam &param)
     requires(b == Backend::TCP || b == Backend::Verbs)
-      : info(info_), n_workers(n_workers_), buffers(n_workers * 2, max_rpc_msg_size), ctrl_e(buffers) {
+      : n_workers(n_workers_),
+        param(param),
+        conn_handle(param),
+        buffers(n_workers * 2, max_rpc_msg_size),
+        ctrl_e(buffers) {
     ctrl_e.prepare();
     for (auto &buffer : buffers) {
       vacant_buffers.push_back(buffer);
     }
-    if (info.passive) {
-      CtrlPathAcceptor(info.local_ip, info.local_port).associate({ctrl_e}).listen_and_accept();
+    conn_handle.associate(ctrl_e);
+    if (param.passive) {
+      conn_handle.listen_and_accept();
+      std::thread([this]() { conn_handle.wait_for_disconnect(); }).detach();
     } else {
-      CtrlPathConnector(info.remote_ip, info.remote_port).connect(ctrl_e, info.local_ip, info.local_port);
+      conn_handle.connect();
     }
-    ctrl_e.run();
   }
 
   ~Transport() {
-    if (!info.passive) {
-      ctrl_e.stop();
+    if (!param.passive) {
+      conn_handle.disconnect();
     }
   }
 
@@ -166,11 +163,7 @@ class Transport {
       if (n_read < 0) {
         die("Fail to read payload, errno: {}", -n_read);
       } else if (n_read == 0) {
-        // TODO add disconnect event
-        if (ctrl_e.running()) {
-          TRACE("Connection was closed by peer, going to exit");
-          ctrl_e.stop();
-        }
+        TRACE("closed");
         return;
       }
       TRACE("worker {} read: {}", idx, n_read);
@@ -212,20 +205,25 @@ class Transport {
     vacant_buffers.pop_front();
     return buf;
   }
+
   void release_buffer(const BorrowedBufferRef &buf) { vacant_buffers.push_back(buf); }
 
-  bool progress() { return ctrl_e.progress(); }
+  void progress_until(std::function<bool()> &&fn) {
+    while (!(outstanding_rpcs.empty() && fn())) {
+      if (!ctrl_e.progress()) {
+        boost::this_fiber::yield();
+      }
+    }
+  }
 
-  ConnectionInfo info;
-
-  size_t n_workers = -1;
+  const size_t n_workers = -1;
   int64_t seq = 1;
-
+  ConnectionParam param;
+  ConnectionHandleType conn_handle;
   Buffers buffers;
+  CtrlPathEndpointType ctrl_e;
   BorrowedBufferRefQueue vacant_buffers;
   std::unordered_map<int64_t, ContextBase *> outstanding_rpcs;
-
-  CtrlPathEndpointType ctrl_e;
 };
 
 template <Backend b, Rpc... rpcs>
@@ -233,14 +231,7 @@ class TransportGuard : Noncopyable, Nonmovable {
  public:
   TransportGuard(Transport<b, rpcs...> &t_) : t(t_) {
     // TODO add a futex to fast detect race and then die.
-    poller = boost::fibers::fiber([this]() {
-      while (!(t.outstanding_rpcs.empty() && exit)) {
-        if (!t.progress()) {
-          // boost::this_fiber::sleep_for(10ns);
-          boost::this_fiber::yield();
-        }
-      }
-    });
+    poller = boost::fibers::fiber([this]() { t.progress_until([this] { return exit; }); });
     TRACE("Attach to current thread");
   }
   ~TransportGuard() {
