@@ -15,10 +15,9 @@ namespace tcp {
 class Endpoint : public EndpointBase {
   friend class Acceptor;
   friend class Connector;
-  friend class Connection;
 
  public:
-  Endpoint() = default;
+  Endpoint(Buffers &buffers_) : buffers(buffers_) {}
 
   ~Endpoint() {
     if (sock != -1) {
@@ -32,7 +31,7 @@ class Endpoint : public EndpointBase {
     io_uring_queue_exit(&ring);
   };
 
-  void prepare(Buffers &buffers) {
+  void prepare() {
     EndpointBase::prepare();
     if (auto ec = io_uring_queue_init(buffers.size(), &ring, 0); ec < 0) {
       die("Fail to init ring, errno: {}", -ec);
@@ -62,7 +61,9 @@ class Endpoint : public EndpointBase {
 
   op_res_future_t post_recv(OpContext &ctx, BorrowedBuffer &buf) { return post<Op::Recv>(ctx, buf); }
 
-  op_res_future_t post_send(OpContext &ctx, BorrowedBuffer &buf) { return post<Op::Send>(ctx, buf); }
+  op_res_future_t post_send(OpContext &ctx, BorrowedBuffer &buf, [[maybe_unused]] size_t len) {
+    return post<Op::Send>(ctx, buf);
+  }
 
   // NOTICE
   // Because of the tcp stick package problem, we here send the whole buffer in one post.
@@ -88,6 +89,7 @@ class Endpoint : public EndpointBase {
 
   int sock = -1;
   io_uring ring;
+  Buffers &buffers;
 };
 
 }  // namespace tcp

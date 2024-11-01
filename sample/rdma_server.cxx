@@ -2,13 +2,16 @@
 #include <glaze/glaze.hpp>
 
 #include "echo.hxx"
-#include "rdma_common.hxx"
+#include "priv/transport.hxx"
 
 int main(int argc, char* argv[]) {
+  spdlog::set_level(spdlog::level::trace);
+
   args::ArgumentParser p("Sample rdma server");
   args::HelpFlag help(p, "help", "Display this help menu", {'h', "help"});
   args::ValueFlag<std::string> local_ip(p, "local ip", "local ip", {"local_ip"}, args::Options::Required);
   args::ValueFlag<uint16_t> local_port(p, "local port", "local port", {"local_port"}, args::Options::Required);
+  args::ValueFlag<uint32_t> n_worker(p, "n worker", "n worker", {"n_worker"}, 2);
 
   try {
     p.ParseCLI(argc, argv);
@@ -23,21 +26,17 @@ int main(int argc, char* argv[]) {
     return -1;
   }
 
-  Endpoint e1(10, 128);
-  Endpoint e2(10, 128);
-  Acceptor a(args::get(local_ip), args::get(local_port));
-  a.associate({e1, e2}).listen_and_accept();
-  auto echo = [](Endpoint& e) {
-    e.serve<EchoRpc>([](PayloadType&& req) -> PayloadType {
-      INFO("{}", glz::write_json<>(req).value_or("Corrupted Payload!"));
-      req.id++;
-      req.message += ", World";
-      return req;
-    });
+  auto echo = [&]() {
+    Transport<Backend::Verbs, EchoRpc> t(args::get(n_worker), 4096,
+                                         ConnectionInfo{
+                                             .passive = true,
+                                             .local_ip = args::get(local_ip),
+                                             .local_port = args::get(local_port),
+                                         });
+    TransportGuard g(t);
+    t.serve();
   };
-
-  std::jthread bg_e1(echo, std::ref(e1));
-  std::jthread bg_e2(echo, std::ref(e2));
+  std::jthread bg_e1(echo);
 
   return 0;
 }
