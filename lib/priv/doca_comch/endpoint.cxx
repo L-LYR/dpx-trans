@@ -159,6 +159,9 @@ void Endpoint::disconnect_event_cb(doca_comch_event_connection_status_changed *,
   if (e->conn == conn) {
     e->conn = nullptr;
     e->stop();
+    for (OpContext &op_ctx : e->recv_ops_q) {
+      op_ctx.op_res.set_value(0);
+    }
     TRACE("Disconnection of {}", e->name);
   } else {
     WARN("Only support one connection, ignored");
