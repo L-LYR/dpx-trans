@@ -5,7 +5,7 @@
 
 namespace tcp {
 
-Endpoint::Endpoint(Buffers &buffers_) : buffers(buffers_) {}
+Endpoint::Endpoint(naive::Buffers &buffers_) : buffers(buffers_) {}
 
 Endpoint::~Endpoint() {
   if (auto ec = io_uring_unregister_buffers(&ring); ec < 0) {

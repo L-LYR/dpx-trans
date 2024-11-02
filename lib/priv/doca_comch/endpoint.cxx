@@ -1,5 +1,6 @@
 #include "priv/doca_comch/endpoint.hxx"
 
+#include "doca/check.hxx"
 #include "util/unreachable.hxx"
 
 namespace {
@@ -21,7 +22,7 @@ inline void *get_user_data_from_connection(doca_comch_connection *c) {
 
 namespace doca::comch::ctrl_path {
 
-Endpoint::Endpoint(Device &dev_, Buffers &buffers_, std::string name_)
+Endpoint::Endpoint(Device &dev_, naive::Buffers &buffers_, std::string_view name_)
     : dev(dev_),
       buffers(buffers_),
       side(dev_.run_on_dpu() ? Side::ServerSide : Side::ClientSide),

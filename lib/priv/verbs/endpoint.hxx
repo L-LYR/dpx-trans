@@ -19,7 +19,7 @@ class Endpoint : public EndpointBase {
   friend class ConnectionHandle;
 
  public:
-  Endpoint(Buffers& buffers_);
+  Endpoint(naive::Buffers& buffers_);
   ~Endpoint();
 
   op_res_future_t post_recv(OpContext& ctx);
@@ -38,7 +38,7 @@ class Endpoint : public EndpointBase {
   void setup_resources();
   void setup_remote_param(const rdma_conn_param& remote_);
 
-  Buffers& buffers;
+  naive::Buffers& buffers;
   rdma_cm_id* id = nullptr;  // not own, just borrowed
   ibv_pd* pd = nullptr;
   ibv_cq* cq = nullptr;

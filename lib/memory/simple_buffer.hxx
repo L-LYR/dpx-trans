@@ -85,6 +85,8 @@ static_assert(ByteView<BorrowedBuffer>, "Buffer is not a valid byte view");
 
 using BorrowedBufferQueue = std::list<BorrowedBuffer>;
 
+namespace naive {
+
 class Buffers : public OwnedBuffer {
  public:
   Buffers(size_t n, size_t piece_len_) : OwnedBuffer(piece_len_ * n), piece_len(piece_len_) {
@@ -143,3 +145,5 @@ class Buffers : public OwnedBuffer {
   size_t piece_len = -1;
   BorrowedBufferQueue q;
 };
+
+}  // namespace naive

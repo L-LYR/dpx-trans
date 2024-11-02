@@ -5,7 +5,7 @@
 #include <doca_pe.h>
 
 #include "doca/device.hxx"
-#include "doca/simple_buffer.hxx"
+#include "memory/simple_buffer.hxx"
 #include "priv/common.hxx"
 
 namespace doca::comch::ctrl_path {
@@ -14,7 +14,7 @@ class Endpoint : public EndpointBase {
   friend class ConnectionHandle;
 
  public:
-  Endpoint(Device &dev_, Buffers &buffers_, std::string name_);
+  Endpoint(Device &dev_, naive::Buffers &buffers_, std::string_view name_);
 
   ~Endpoint();
 
@@ -42,7 +42,7 @@ class Endpoint : public EndpointBase {
 
  private:
   Device &dev;
-  Buffers &buffers;
+  naive::Buffers &buffers;
   Side side;
   std::string name;
   uint32_t max_msg_size = -1;

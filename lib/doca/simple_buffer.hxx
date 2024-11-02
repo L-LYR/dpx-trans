@@ -8,8 +8,6 @@
 #include "doca/device.hxx"
 #include "memory/simple_buffer.hxx"
 
-class Buffers;
-
 namespace doca {
 
 /*

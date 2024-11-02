@@ -31,7 +31,7 @@ int main(int argc, char* argv[]) {
     return -1;
   }
   doca::Device dev(args::get(dev_pci_address));
-  Transport<Backend::DOCA_Comch, EchoRpc> t(dev, args::get(n_caller), 4096,
+  Transport<Backend::DOCA_Comch, EchoRpc> t(dev, args::get(n_caller), 1024,
                                             ConnectionParam<Backend::DOCA_Comch>{
                                                 {.passive = false},
                                                 .name = args::get(name),

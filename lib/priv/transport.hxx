@@ -1,7 +1,7 @@
 #pragma once
 
 #include "concept/rpc.hxx"
-#include "doca/simple_buffer.hxx"
+#include "memory/simple_buffer.hxx"
 #include "priv/common.hxx"
 #include "priv/doca_comch/connection.hxx"
 #include "priv/doca_comch/endpoint.hxx"
@@ -34,8 +34,6 @@ class Transport {
     std::conditional_t<b == Backend::DOCA_Comch, doca::comch::ctrl_path::ConnectionHandle, void>>>;
   // clang-format on
   using ConnectionParam = ConnectionParam<b>;
-  // using Buffers = std::conditional_t<b == Backend::DOCA_Comch, doca::Buffers, Buffers>;
-  using Buffers = Buffers;
 
   template <Backend, Rpc...>
   friend class TransportGuard;
@@ -68,8 +66,6 @@ class Transport {
         ctrl_e(dev, buffers, param.name) {
     ctrl_e.prepare();
     conn_handle.associate(ctrl_e);
-    ctrl_e.prepare();
-    conn_handle.associate(ctrl_e);
     if (param.passive) {
       conn_handle.listen_and_accept();
     } else {
@@ -82,7 +78,7 @@ class Transport {
       conn_handle.disconnect();
     } else {
       if constexpr (b == Backend::DOCA_Comch) {
-        conn_handle.listen_and_accept();
+        conn_handle.wait_for_disconnect();
       }
     }
   }
@@ -257,7 +253,7 @@ class Transport {
   int64_t seq = 1;
   ConnectionParam param;
   ConnectionHandleType conn_handle;
-  Buffers buffers;
+  naive::Buffers buffers;
   CtrlPathEndpointType ctrl_e;
   std::unordered_map<int64_t, ContextBase *> outstanding_rpcs;
 };

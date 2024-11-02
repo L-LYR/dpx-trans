@@ -14,8 +14,8 @@ dpx_trans_src = [
     './priv/tcp/endpoint.cxx',
     './priv/verbs/connection.cxx',
     './priv/verbs/endpoint.cxx',
-    # './priv/doca_comch/connection.cxx',
-    # './priv/doca_comch/endpoint.cxx',
+    './priv/doca_comch/connection.cxx',
+    './priv/doca_comch/endpoint.cxx',
 ]
 
 dpx_trans = library(
