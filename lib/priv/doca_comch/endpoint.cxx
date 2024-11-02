@@ -53,6 +53,7 @@ Endpoint::~Endpoint() {
 void Endpoint::prepare() {
   doca_check(doca_comch_cap_get_max_msg_size(doca_dev_as_devinfo(dev.dev), &max_msg_size));
   doca_check(doca_comch_cap_get_max_recv_queue_size(doca_dev_as_devinfo(dev.dev), &recv_queue_size));
+  TRACE("{} {}", max_msg_size, recv_queue_size);
   if (side == Side::ServerSide) {
     auto ctx = doca_comch_server_as_ctx(s);
     doca_check(doca_ctx_set_state_changed_cb(ctx, state_change_cb<Side::ServerSide>));

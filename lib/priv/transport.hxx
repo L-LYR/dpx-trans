@@ -91,17 +91,15 @@ class Transport {
     auto call_seq = seq++;
     {
       TRACE("caller post recv");
-      auto recv_buf = acquire_buffer();
-      OpContext recv_ctx(Op::Recv, recv_buf, recv_buf.size());
-      auto n_read_f = ctrl_e.post_recv(recv_ctx);
-      boost::fibers::fiber([this, recv_buf = std::move(recv_buf), n_read_f = std::move(n_read_f),
-                            recv_ctx = std::move(recv_ctx)]() mutable {
+      auto recv_ctx = new OpContext(Op::Recv, acquire_buffer());
+      auto n_read_f = ctrl_e.post_recv(*recv_ctx);
+      boost::fibers::fiber([this, n_read_f = std::move(n_read_f), recv_ctx]() mutable {
         auto n_read = n_read_f.get();
         if (n_read <= 0) {
           die("Fail to read payload, errno: {}", -n_read);
         }
         TRACE("caller read {}", n_read);
-        auto deserializer = Deserializer(recv_buf);
+        auto deserializer = Deserializer(recv_ctx->buf);
         int64_t seq = 0;
         rpc_id_t id = 0;
         deserializer(seq, id).or_throw();
@@ -112,7 +110,8 @@ class Transport {
         if (!(dispatch_response<rpcs>(-seq, id, deserializer) || ...)) {
           die("Mismatch rpc id, got {}", id);
         }
-        release_buffer(std::move(recv_buf));
+        release_buffer(std::move(recv_ctx->buf));
+        delete recv_ctx;
       }).detach();
     }
 
@@ -120,7 +119,7 @@ class Transport {
     auto serializer = Serializer(send_buf);
     serializer(call_seq, Rpc::id, r).or_throw();
     TRACE("caller post write");
-    OpContext send_ctx(Op::Send, send_buf, serializer.position());
+    OpContext send_ctx(Op::Send, std::move(send_buf), serializer.position());
     auto n_write_f = ctrl_e.post_send(send_ctx);
     TRACE("send with seq: {} id: {}", call_seq, Rpc::id);
     auto rpc_ctx = new RpcContext<Rpc>;
@@ -132,7 +131,7 @@ class Transport {
       die("Fail to write payload, errno: {}", -n_write);
     }
     TRACE("caller write {}", n_write);
-    release_buffer(std::move(send_buf));
+    release_buffer(std::move(send_ctx.buf));
 
     return f;
   }
@@ -189,20 +188,18 @@ class Transport {
     auto buf = acquire_buffer();
     buf.clear();
 
-    {
-      TRACE("worker {} post recv", idx);
-      OpContext ctx(Op::Recv, buf, buf.size());
-      auto n_read = ctrl_e.post_recv(ctx).get();
-      if (n_read < 0) {
-        die("Fail to read payload, errno: {}", -n_read);
-      } else if (n_read == 0) {
-        TRACE("closed");
-        return;
-      }
-      TRACE("worker {} read: {}", idx, n_read);
+    TRACE("worker {} post recv", idx);
+    OpContext recv_ctx(Op::Recv, std::move(buf));
+    auto n_read = ctrl_e.post_recv(recv_ctx).get();
+    if (n_read < 0) {
+      die("Fail to read payload, errno: {}", -n_read);
+    } else if (n_read == 0) {
+      TRACE("closed");
+      return;
     }
+    TRACE("worker {} read: {}", idx, n_read);
 
-    auto deserializer = Deserializer(buf);
+    auto deserializer = Deserializer(recv_ctx.buf);
 
     int64_t seq = 0;
     rpc_id_t id = 0;
@@ -214,22 +211,20 @@ class Transport {
       die("Payload is not request");
     }
 
-    auto serializer = Serializer(buf);
+    auto serializer = Serializer(recv_ctx.buf);
     if (!(dispatch_request<rpcs>(seq, id, deserializer, serializer) || ...)) {
       die("Mismatch rpc id, got {}", id);
     }
 
-    {
-      TRACE("worker {} post send", idx);
-      OpContext ctx(Op::Send, buf, serializer.position());
-      auto n_write = ctrl_e.post_send(ctx).get();
-      if (n_write < 0) {
-        die("Fail to write payload, errno: {}", -n_write);
-      }
-      TRACE("worker {} write: {}", idx, n_write);
+    TRACE("worker {} post send", idx);
+    OpContext send_ctx(Op::Send, std::move(recv_ctx.buf), serializer.position());
+    auto n_write = ctrl_e.post_send(send_ctx).get();
+    if (n_write < 0) {
+      die("Fail to write payload, errno: {}", -n_write);
     }
+    TRACE("worker {} write: {}", idx, n_write);
 
-    release_buffer(std::move(buf));
+    release_buffer(std::move(send_ctx.buf));
   }
 
   BorrowedBuffer acquire_buffer() {
