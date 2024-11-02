@@ -114,27 +114,17 @@ void ConnectionHandle::listen_and_accept() {
 }
 
 void ConnectionHandle::wait_for_disconnect() {
-  uint32_t n_endpoints = pending_endpoints.size();
-  uint32_t n_disconnected = 0;
-  while (n_disconnected < n_endpoints) {
-    auto e = c.get_event();  // block call
-    switch (e->event) {
-      case RDMA_CM_EVENT_DISCONNECTED: {
-        auto endpoint = reinterpret_cast<Endpoint*>(e->id->context);
-        endpoint->stop();
-        if (auto ec = rdma_disconnect(e->id); ec < 0) {
-          die("Fail to disconnect, errno: {}", errno);
-        }
-        n_disconnected++;
-        TRACE("Stop");
-      } break;
-      default: {
-        die("Unexpected event {}", rdma_event_str(e->event));
-      }
-    }
+  for (auto n_disconnected = 0uz; n_disconnected < pending_endpoints.size(); ++n_disconnected) {
+    auto e = c.wait(RDMA_CM_EVENT_DISCONNECTED);
+    auto endpoint = reinterpret_cast<Endpoint*>(e->id->context);
     c.ack(e);
+
+    endpoint->stop();
+    if (auto ec = rdma_disconnect(endpoint->id); ec < 0) {
+      die("Fail to disconnect, errno: {}", errno);
+    }
+    endpoint->shutdown();
   }
-  TRACE("Shutdown");
 }
 
 void ConnectionHandle::connect() {
@@ -168,14 +158,13 @@ void ConnectionHandle::connect() {
 }
 
 void ConnectionHandle::disconnect() {
-  TRACE("Closing");
   std::ranges::for_each(pending_endpoints, [](Endpoint& e) {
     e.stop();
     if (auto ec = rdma_disconnect(e.id); ec < 0) {
       die("Fail to disconnect, errno: {}", errno);
     }
+    e.shutdown();
   });
-  TRACE("Shutdown");
 }
 
 }  // namespace verbs

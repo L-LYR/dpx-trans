@@ -1,17 +1,16 @@
 #pragma once
 
-#include <netinet/in.h>
-
 #include "priv/common.hxx"
 
-namespace tcp {
+namespace doca::comch {
 
 struct ConnectionParam : ConnectionCommonParam {
-  std::string remote_ip = "";
-  std::string local_ip = "";
-  uint16_t remote_port = 0;
-  uint16_t local_port = 0;
+  std::string name;
 };
+
+}  // namespace doca::comch
+
+namespace doca::comch::ctrl_path {
 
 class Endpoint;
 
@@ -20,16 +19,14 @@ class ConnectionHandle : public ConnectionHandleBase<ConnectionHandle, Endpoint,
   ConnectionHandle(const ConnectionParam &param_);
   ~ConnectionHandle();
 
-  // passive side
   void listen_and_accept();
   void wait_for_disconnect();
 
-  // active side
   void connect();
   void disconnect();
 
  private:
-  int conn_sock = -1;
+  void progress_all_until(std::function<bool(Endpoint &e)> &&predictor);
 };
 
-}  // namespace tcp
+}  // namespace doca::comch::ctrl_path

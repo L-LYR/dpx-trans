@@ -12,7 +12,7 @@ bool Endpoint::progress() {
   }
   if (ec == 1) {
     auto ctx = reinterpret_cast<OpContext*>(wc.wr_id);
-    if (wc.status == IBV_WC_WR_FLUSH_ERR) {  // diconnected
+    if (wc.status == IBV_WC_WR_FLUSH_ERR) {  // diconnected, notify workers to stop
       ctx->op_res.set_value(0);
     } else if (wc.status == IBV_WC_SUCCESS) {
       switch (wc.opcode) {
@@ -21,7 +21,7 @@ bool Endpoint::progress() {
           ctx->op_res.set_value(wc.imm_data);
         } break;
         case IBV_WC_SEND: {
-          ctx->op_res.set_value(1);
+          ctx->op_res.set_value(ctx->len);
         } break;
         default: {
           die("Unexpected wc opcode {}", static_cast<int>(wc.opcode));
@@ -35,10 +35,10 @@ bool Endpoint::progress() {
   return false;
 }
 
-op_res_future_t Endpoint::post_recv(OpContext& ctx, BorrowedBuffer& buffer) {
+op_res_future_t Endpoint::post_recv(OpContext& ctx) {
   ibv_sge sge = {
-      .addr = reinterpret_cast<uint64_t>(buffer.data()),
-      .length = static_cast<uint32_t>(buffer.size()),
+      .addr = reinterpret_cast<uint64_t>(ctx.buf.data()),
+      .length = static_cast<uint32_t>(ctx.len),
       .lkey = mr->lkey,
   };
   ibv_recv_wr wr = {
@@ -54,10 +54,10 @@ op_res_future_t Endpoint::post_recv(OpContext& ctx, BorrowedBuffer& buffer) {
   return ctx.op_res.get_future();
 }
 
-op_res_future_t Endpoint::post_send(OpContext& ctx, BorrowedBuffer& buffer, uint32_t len) {
+op_res_future_t Endpoint::post_send(OpContext& ctx) {
   ibv_sge sge = {
-      .addr = reinterpret_cast<uint64_t>(buffer.data()),
-      .length = len,
+      .addr = reinterpret_cast<uint64_t>(ctx.buf.data()),
+      .length = static_cast<uint32_t>(ctx.len),
       .lkey = mr->lkey,
   };
   ibv_send_wr wr = {
@@ -68,7 +68,7 @@ op_res_future_t Endpoint::post_send(OpContext& ctx, BorrowedBuffer& buffer, uint
       .opcode = IBV_WR_SEND_WITH_IMM,
       .send_flags = IBV_SEND_SIGNALED,
       {
-          .imm_data = len,
+          .imm_data = static_cast<uint32_t>(ctx.len),
       },
       {},
       {},
@@ -81,10 +81,9 @@ op_res_future_t Endpoint::post_send(OpContext& ctx, BorrowedBuffer& buffer, uint
   return ctx.op_res.get_future();
 }
 
-Endpoint::Endpoint(Buffers& buffers_) : buffers(buffers_) {}
+Endpoint::Endpoint(naive::Buffers& buffers_) : buffers(buffers_) {}
 
 Endpoint::~Endpoint() {
-  assert(stopped());
   if (qp != nullptr) {
     if (auto ec = ibv_destroy_qp(qp); ec != 0) {
       die("Fail to destroy qp, errno {}", errno);
@@ -141,7 +140,7 @@ void Endpoint::setup_resources() {
     die("Fail to create qp, errno {}", errno);
   }
   qp = id->qp;
-  if (mr = ibv_reg_mr(pd, buffers.base_address(), buffers.total_length(),
+  if (mr = ibv_reg_mr(pd, buffers.data(), buffers.size(),
                       IBV_ACCESS_LOCAL_WRITE | IBV_ACCESS_REMOTE_READ | IBV_ACCESS_REMOTE_WRITE);
       mr == nullptr) {
     die("Fail to register memory region, errno {}", errno);
@@ -149,6 +148,7 @@ void Endpoint::setup_resources() {
   local_mr_h.address = reinterpret_cast<uint64_t>(mr->addr);
   local_mr_h.length = mr->length;
   local_mr_h.rkey = mr->rkey;
+  ibv_device_attr_ex device_attr_ex = {};
   ibv_query_device_ex_input query = {};
   if (auto ec = ibv_query_device_ex(id->verbs, &query, &device_attr_ex); ec < 0) {
     die("Fail to query extended attributes of device, errno: {}", errno);

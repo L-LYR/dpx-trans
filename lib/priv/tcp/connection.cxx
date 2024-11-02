@@ -89,15 +89,13 @@ void ConnectionHandle::listen_and_accept() {
 void ConnectionHandle::wait_for_disconnect() {
   assert(param.passive);
   char c = 0;
-  TRACE("Wait for disconnection event");
   read(conn_sock, &c, 1);
   // we don't care the return value, any case will indicate the connection is going to close.
-  TRACE("Closing");
   std::ranges::for_each(pending_endpoints, [](Endpoint &e) {
-    close_socket(e.sock);
     e.stop();
+    close_socket(e.sock);
+    e.shutdown();
   });
-  TRACE("Shutdown");
 }
 
 void ConnectionHandle::connect() {
@@ -126,14 +124,12 @@ void ConnectionHandle::connect() {
 void ConnectionHandle::disconnect() {
   assert(!param.passive);
   char c = 'x';
-  TRACE("Issue a disconnection event");
   write(conn_sock, &c, 1);
-  TRACE("Closing");
   std::ranges::for_each(pending_endpoints, [](Endpoint &e) {
     e.stop();
     close_socket(e.sock);
+    e.shutdown();
   });
-  TRACE("Shutdown");
 }
 
 }  // namespace tcp

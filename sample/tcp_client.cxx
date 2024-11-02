@@ -32,8 +32,8 @@ int main(int argc, char* argv[]) {
   }
 
   Transport<Backend::TCP, EchoRpc> t(args::get(n_caller), 4096,
-                                     ConnectionParam{
-                                         .passive = false,
+                                     ConnectionParam<Backend::TCP>{
+                                         {.passive = false},
                                          .remote_ip = args::get(remote_ip),
                                          .local_ip = args::get(local_ip),
                                          .remote_port = args::get(remote_port),

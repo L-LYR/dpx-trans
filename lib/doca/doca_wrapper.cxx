@@ -4,43 +4,9 @@
 
 namespace doca_wrapper {
 
-DocaDev open_dev(std::string_view pci_addr) {
-  doca_devinfo **dev_list;
-  uint32_t n_devs = 0;
-  doca_check(doca_devinfo_create_list(&dev_list, &n_devs));
-  for (auto devinfo : std::span<doca_devinfo *>(dev_list, n_devs)) {
-    uint8_t is_equal = 0;
-    doca_check(doca_devinfo_is_equal_pci_addr(devinfo, pci_addr.data(), &is_equal));
-    if (is_equal) {
-      doca_dev *dev = nullptr;
-      doca_check(doca_dev_open(devinfo, &dev));
-      doca_devinfo_destroy_list(dev_list);
-      return DocaDev(dev);
-    }
-  }
-  die("Device {} not found", pci_addr);
-}
-
-DocaDevRep open_dev_rep(DocaDev &dev, std::string_view pci_addr, doca_devinfo_rep_filter filter) {
-  uint32_t n_dev_reps = 0;
-  doca_devinfo_rep **dev_rep_list = nullptr;
-  doca_check(doca_devinfo_rep_create_list(dev.get(), filter, &dev_rep_list, &n_dev_reps));
-  for (auto &devinfo_rep : std::span<doca_devinfo_rep *>(dev_rep_list, n_dev_reps)) {
-    uint8_t is_equal = 0;
-    doca_check(doca_devinfo_rep_is_equal_pci_addr(devinfo_rep, pci_addr.data(), &is_equal));
-    if (is_equal) {
-      doca_dev_rep *dev_rep = nullptr;
-      doca_check(doca_dev_rep_open(devinfo_rep, &dev_rep));
-      doca_devinfo_rep_destroy_list(dev_rep_list);
-      return DocaDevRep(dev_rep);
-    }
-  }
-  die("Device representor {} not found", pci_addr);
-}
 
 ComchServer create_comch_server(DocaDev &dev, DocaDevRep &dev_rep, std::string_view name) {
   doca_comch_server *server = nullptr;
-  doca_check(doca_comch_server_create(dev.get(), dev_rep.get(), name.data(), &server));
   return ComchServer(server);
 }
 

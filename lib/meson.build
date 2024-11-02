@@ -9,11 +9,13 @@ dpx_trans_incs = []
 dpx_trans_incs += basic_incs
 
 dpx_trans_src = [
+    './doca/device.cxx',
     './priv/tcp/connection.cxx',
     './priv/tcp/endpoint.cxx',
-    './util/doca_wrapper.cxx',
     './priv/verbs/connection.cxx',
     './priv/verbs/endpoint.cxx',
+    './priv/doca_comch/connection.cxx',
+    './priv/doca_comch/endpoint.cxx',
 ]
 
 dpx_trans = library(
