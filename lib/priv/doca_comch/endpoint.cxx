@@ -88,6 +88,10 @@ void Endpoint::run() { EndpointBase::run(); }
 void Endpoint::stop() {
   if (side == Side::ClientSide) {
     doca_check_ext(doca_ctx_stop(doca_comch_client_as_ctx(c)), DOCA_ERROR_IN_PROGRESS);
+  } else if (side == Side::ServerSide) {
+    doca_check_ext(doca_ctx_stop(doca_comch_server_as_ctx(s)), DOCA_ERROR_IN_PROGRESS);
+  } else {
+    unreachable();
   }
   EndpointBase::stop();
 }
