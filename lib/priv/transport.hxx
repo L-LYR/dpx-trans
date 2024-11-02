@@ -67,10 +67,13 @@ class Transport {
     ctrl_e.prepare();
     conn_handle.associate(ctrl_e);
     if (param.passive) {
+      TRACE("listen and accept");
       conn_handle.listen_and_accept();
     } else {
+      TRACE("connect");
       conn_handle.connect();
     }
+    TRACE("START!");
   }
 
   ~Transport() {
