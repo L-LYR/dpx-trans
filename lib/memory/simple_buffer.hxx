@@ -97,7 +97,7 @@ class Buffers : public OwnedBuffer {
     }
   }
 
-  ~Buffers() { free(); }
+  ~Buffers() = default;
 
   Buffers(Buffers &&other) : OwnedBuffer(std::move(*this)) {
     piece_len = std::exchange(other.piece_len, -1);
@@ -136,12 +136,6 @@ class Buffers : public OwnedBuffer {
   }
 
  protected:
-  void free() {
-    if (base != nullptr) {
-      delete[] base;
-    }
-  }
-
   size_t piece_len = -1;
   BorrowedBufferQueue q;
 };

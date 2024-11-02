@@ -38,7 +38,7 @@ int main(int argc, char* argv[]) {
                                             });
 
   auto call_fn = [&]() {
-    for (auto i = 0; i < 1000; i++) {
+    for (auto i = 0; i < 2; i++) {
       auto echo_resp = t.call<EchoRpc>(payload_4k);
       auto resp = echo_resp.get();
     }

@@ -158,13 +158,15 @@ template <Side side>
 void Endpoint::new_consumer_event_cb(doca_comch_event_consumer *, doca_comch_connection *, uint32_t) {}
 template <Side side>
 void Endpoint::expired_consumer_event_cb(doca_comch_event_consumer *, doca_comch_connection *, uint32_t) {}
-void Endpoint::task_completion_cb(doca_comch_task_send *, doca_data task_user_data, doca_data) {
+void Endpoint::task_completion_cb(doca_comch_task_send *task, doca_data task_user_data, doca_data) {
   auto ctx = reinterpret_cast<OpContext *>(task_user_data.ptr);
   ctx->op_res.set_value(ctx->len);
+  doca_task_free(doca_comch_task_send_as_task(task));
 }
-void Endpoint::task_error_cb(doca_comch_task_send *, doca_data task_user_data, doca_data) {
+void Endpoint::task_error_cb(doca_comch_task_send *task, doca_data task_user_data, doca_data) {
   auto ctx = reinterpret_cast<OpContext *>(task_user_data.ptr);
   ctx->op_res.set_value(0);
+  doca_task_free(doca_comch_task_send_as_task(task));
 }
 template <Side side>
 void Endpoint::recv_event_cb(struct doca_comch_event_msg_recv *, uint8_t *buf, uint32_t len,
