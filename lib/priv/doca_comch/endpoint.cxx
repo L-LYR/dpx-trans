@@ -88,10 +88,6 @@ void Endpoint::run() { EndpointBase::run(); }
 void Endpoint::stop() {
   if (side == Side::ClientSide) {
     doca_check_ext(doca_ctx_stop(doca_comch_client_as_ctx(c)), DOCA_ERROR_IN_PROGRESS);
-  } else if (side == Side::ServerSide) {
-    doca_check_ext(doca_ctx_stop(doca_comch_server_as_ctx(s)), DOCA_ERROR_IN_PROGRESS);
-  } else {
-    unreachable();
   }
   EndpointBase::stop();
 }
@@ -124,6 +120,8 @@ void Endpoint::state_change_cb(const doca_data ctx_user_data, doca_ctx *, doca_c
     case DOCA_CTX_STATE_IDLE: {
       if constexpr (side == Side::ClientSide) {
         e->conn = nullptr;
+      } else if constexpr (side == Side::ServerSide) {
+        e->stop();
       }
     } break;
     case DOCA_CTX_STATE_STARTING: {
@@ -162,7 +160,7 @@ void Endpoint::disconnect_event_cb(doca_comch_event_connection_status_changed *,
   auto e = reinterpret_cast<Endpoint *>(get_user_data_from_connection<Side::ServerSide>(conn));
   if (e->conn == conn) {
     e->conn = nullptr;
-    e->stop();
+    doca_check_ext(doca_ctx_stop(doca_comch_server_as_ctx(e->s)), DOCA_ERROR_IN_PROGRESS);
     for (OpContext &op_ctx : e->recv_ops_q) {
       op_ctx.op_res.set_value(0);
     }

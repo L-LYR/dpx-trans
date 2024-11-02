@@ -33,7 +33,7 @@ void ConnectionHandle::listen_and_accept() {
 }
 
 void ConnectionHandle::wait_for_disconnect() {
-  progress_all_until([](Endpoint& e) { return e.conn == nullptr; });
+  progress_all_until([](Endpoint& e) { return e.stopped(); });
 }
 
 void ConnectionHandle::connect() {
