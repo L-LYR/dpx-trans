@@ -14,7 +14,7 @@ void ConnectionHandle::progress_all_until(std::function<bool(Endpoint& e)>&& fn)
   while (true) {
     uint32_t n_satisfied = 0;
     for (Endpoint& e : pending_endpoints) {
-      if (fn(e)) {
+      if (!fn(e)) {
         e.progress();
       } else {
         n_satisfied++;
