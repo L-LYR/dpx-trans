@@ -30,7 +30,7 @@ int main(int argc, char* argv[]) {
   }
   auto echo = [&]() {
     doca::Device dev(args::get(dev_pci_address), args::get(rep_pci_address), DOCA_DEVINFO_REP_FILTER_NET);
-    Transport<Backend::DOCA_Comch, EchoRpc> t(dev, args::get(n_worker), 1024,
+    Transport<Backend::DOCA_Comch, EchoRpc> t(dev, args::get(n_worker), 4096,
                                               ConnectionParam<Backend::DOCA_Comch>{
                                                   {.passive = true},
                                                   .name = args::get(server_name),

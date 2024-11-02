@@ -15,7 +15,7 @@ int main(int argc, char* argv[]) {
   args::HelpFlag help(p, "help", "Display this help menu", {'h', "help"});
   args::ValueFlag<std::string> dev_pci_address(p, "pci address", "pci address", {"pci_address"},
                                                args::Options::Required);
-  args::ValueFlag<std::string> name(p, "name", "name", {"name"}, args::Options::Required);
+  args::ValueFlag<std::string> server_name(p, "server name", "server name", {"server_name"}, args::Options::Required);
   args::ValueFlag<uint32_t> n_caller(p, "n caller", "n caller", {"n_caller"}, 1);
 
   try {
@@ -31,10 +31,10 @@ int main(int argc, char* argv[]) {
     return -1;
   }
   doca::Device dev(args::get(dev_pci_address));
-  Transport<Backend::DOCA_Comch, EchoRpc> t(dev, args::get(n_caller), 1024,
+  Transport<Backend::DOCA_Comch, EchoRpc> t(dev, args::get(n_caller), 4096,
                                             ConnectionParam<Backend::DOCA_Comch>{
                                                 {.passive = false},
-                                                .name = args::get(name),
+                                                .name = args::get(server_name),
                                             });
 
   auto call_fn = [&]() {
