@@ -30,8 +30,8 @@ int main(int argc, char* argv[]) {
     return -1;
   }
   Transport<Backend::Verbs, EchoRpc> t(args::get(n_caller), 4096,
-                                       ConnectionParam{
-                                           .passive = false,
+                                       ConnectionParam<Backend::Verbs>{
+                                           {.passive = false},
                                            .remote_ip = args::get(remote_ip),
                                            .local_ip = args::get(local_ip),
                                            .remote_port = args::get(remote_port),

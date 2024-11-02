@@ -28,8 +28,8 @@ int main(int argc, char* argv[]) {
 
   auto echo = [&]() {
     Transport<Backend::TCP, EchoRpc> t(args::get(n_worker), 4096,
-                                       ConnectionParam{
-                                           .passive = true,
+                                       ConnectionParam<Backend::TCP>{
+                                           {.passive = true},
                                            .local_ip = args::get(local_ip),
                                            .local_port = args::get(local_port),
                                        });

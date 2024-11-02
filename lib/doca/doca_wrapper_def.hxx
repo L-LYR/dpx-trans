@@ -47,20 +47,3 @@ struct DocaComchProducerDeleter {
   void operator()(doca_comch_producer *p) const { doca_check(doca_comch_producer_destroy(p)); }
 };
 using DocaComchProducer = std::unique_ptr<doca_comch_producer, DocaComchProducerDeleter>;
-
-template <>
-struct std::formatter<doca_ctx_states> : std::formatter<const char *> {
-  template <typename Context>
-  Context::iterator format(doca_ctx_states s, Context out) const {
-    switch (s) {
-      case DOCA_CTX_STATE_IDLE:
-        return std::formatter<const char *>::format("Idle", out);
-      case DOCA_CTX_STATE_STARTING:
-        return std::formatter<const char *>::format("Starting", out);
-      case DOCA_CTX_STATE_RUNNING:
-        return std::formatter<const char *>::format("Running", out);
-      case DOCA_CTX_STATE_STOPPING:
-        return std::formatter<const char *>::format("Stopping", out);
-    }
-  }
-};

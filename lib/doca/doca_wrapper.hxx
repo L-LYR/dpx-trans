@@ -19,17 +19,6 @@ uint32_t device_comch_max_recv_queue_size(DocaDev &dev);
 uint32_t get_comch_consumer_id(DocaComchConsumer &consumer);
 DocaComchConsumer create_comch_consumer(ComchConnection connection, MmapBuffers &buffers);
 
-template <Side side>
-inline void *get_user_data_from_connection(ComchConnection c) {
-  doca_data user_data(nullptr);
-  if constexpr (side == Side::ServerSide) {
-    doca_check(doca_ctx_get_user_data(doca_comch_server_as_ctx(doca_comch_server_get_server_ctx(c)), &user_data));
-  } else if constexpr (side == Side::ClientSide) {
-    doca_check(doca_ctx_get_user_data(doca_comch_client_as_ctx(doca_comch_client_get_client_ctx(c)), &user_data));
-  } else {
-    static_assert(false, "Wrong side!");
-  }
-  return user_data.ptr;
-}
+
 
 }  // namespace doca_wrapper

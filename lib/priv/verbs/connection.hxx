@@ -8,6 +8,13 @@
 
 namespace verbs {
 
+struct ConnectionParam : ConnectionCommonParam {
+  std::string remote_ip = "";
+  std::string local_ip = "";
+  uint16_t remote_port = 0;
+  uint16_t local_port = 0;
+};
+
 class Endpoint;
 
 struct EventChannel : Noncopyable, Nonmovable {
@@ -23,7 +30,7 @@ struct EventChannel : Noncopyable, Nonmovable {
   rdma_event_channel* p = nullptr;
 };
 
-class ConnectionHandle : public ConnectionHandleBase<ConnectionHandle, Endpoint> {
+class ConnectionHandle : public ConnectionHandleBase<ConnectionHandle, Endpoint, ConnectionParam> {
  public:
   ConnectionHandle(const ConnectionParam& param);
   ~ConnectionHandle();

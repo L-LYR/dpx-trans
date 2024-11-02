@@ -2,7 +2,7 @@
 
 #include <iostream>
 
-#include "util/doca_check.hxx"
+#include "doca/check.hxx"
 
 int main() try {
   doca_devinfo **dev_list = nullptr;
@@ -37,7 +37,6 @@ int main() try {
       } catch (const std::runtime_error &e) {
         std::cerr << "Skip, " << e.what() << std::endl;
       }
-
       doca_check(doca_dev_close(dev));
     } else {
       std::cout << "Run on DPU to show device representors" << std::endl;
