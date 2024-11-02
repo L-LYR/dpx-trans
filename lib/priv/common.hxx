@@ -57,28 +57,23 @@ enum class Side {
 
 // TODO: unused currently
 enum class Status {
-  Idle,
   Ready,
   Running,
-  Stopped,
+  Stopping,
+  Exited,
 };
 
 class EndpointBase : Noncopyable, Nonmovable {
  public:
-  explicit EndpointBase(Status s_ = Status::Idle) : s(s_) {}
+  explicit EndpointBase(Status s_ = Status::Ready) : s(s_) {}
   ~EndpointBase() = default;
 
-  bool idle() const { return s == Status::Idle; }
   bool ready() const { return s == Status::Ready; }
   bool running() const { return s == Status::Running; }
-  bool stopped() const { return s == Status::Stopped; }
+  bool stopping() const { return s == Status::Stopping; }
+  bool exited() const { return s == Status::Exited; }
 
  protected:
-  void prepare() {
-    assert(idle());
-    s = Status::Ready;
-    TRACE("Endpoint status change: Idle -> Ready");
-  }
   void run() {
     assert(ready());
     s = Status::Running;
@@ -86,8 +81,13 @@ class EndpointBase : Noncopyable, Nonmovable {
   }
   void stop() {
     assert(running());
-    s = Status::Stopped;
+    s = Status::Stopping;
     TRACE("Endpoint status change: Running -> Stopped");
+  }
+  void shutdown() {
+    assert(stopping());
+    s = Status::Exited;
+    TRACE("Endpoint status change: Stopped -> Exited");
   }
 
   std::atomic<Status> s;
@@ -140,13 +140,13 @@ struct std::formatter<Status> : std::formatter<const char *> {
   template <typename Context>
   Context::iterator format(Status s, Context out) const {
     switch (s) {
-      case Status::Idle:
+      case Status::Exited:
         return std::formatter<const char *>::format("Idle", out);
       case Status::Ready:
         return std::formatter<const char *>::format("Ready", out);
       case Status::Running:
         return std::formatter<const char *>::format("Running", out);
-      case Status::Stopped:
+      case Status::Stopping:
         return std::formatter<const char *>::format("Stopped", out);
     }
   }

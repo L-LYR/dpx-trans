@@ -5,17 +5,7 @@
 
 namespace tcp {
 
-Endpoint::Endpoint(naive::Buffers &buffers_) : buffers(buffers_) {}
-
-Endpoint::~Endpoint() {
-  if (auto ec = io_uring_unregister_buffers(&ring); ec < 0) {
-    die("Fail to unregister buffers, errno: {}", -ec);
-  }
-  io_uring_queue_exit(&ring);
-};
-
-void Endpoint::prepare() {
-  EndpointBase::prepare();
+Endpoint::Endpoint(naive::Buffers &buffers_) : buffers(buffers_) {
   if (auto ec = io_uring_queue_init(buffers.size(), &ring, 0); ec < 0) {
     die("Fail to init ring, errno: {}", -ec);
   }
@@ -24,8 +14,13 @@ void Endpoint::prepare() {
     die("Fail to register buffers, errno: {}", -ec);
   }
 }
-void Endpoint::run() { EndpointBase::run(); }
-void Endpoint::stop() { EndpointBase::stop(); }
+
+Endpoint::~Endpoint() {
+  if (auto ec = io_uring_unregister_buffers(&ring); ec < 0) {
+    die("Fail to unregister buffers, errno: {}", -ec);
+  }
+  io_uring_queue_exit(&ring);
+};
 
 bool Endpoint::progress() {
   io_uring_cqe *cqe = nullptr;

@@ -28,12 +28,6 @@ class Endpoint : public EndpointBase {
 
   bool progress();
 
-  void prepare() { EndpointBase::prepare(); }
-
-  void run() { EndpointBase::run(); }
-
-  void stop() { EndpointBase::stop(); }
-
  private:
   void setup_resources();
   void setup_remote_param(const rdma_conn_param& remote_);

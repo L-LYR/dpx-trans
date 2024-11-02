@@ -1,5 +1,6 @@
 #include "priv/doca_comch/connection.hxx"
 
+#include "doca/check.hxx"
 #include "priv/doca_comch/endpoint.hxx"
 
 using namespace std::chrono_literals;
@@ -10,11 +11,11 @@ ConnectionHandle::ConnectionHandle(const ConnectionParam& param_) : ConnectionHa
 
 ConnectionHandle::~ConnectionHandle() {}
 
-void ConnectionHandle::progress_all_until(std::function<bool(Endpoint& e)>&& fn) {
+void ConnectionHandle::progress_all_until(std::function<bool(Endpoint& e)>&& predictor) {
   while (true) {
     uint32_t n_satisfied = 0;
     for (Endpoint& e : pending_endpoints) {
-      if (!fn(e)) {
+      if (!predictor(e)) {
         e.progress();
       } else {
         n_satisfied++;
@@ -29,20 +30,24 @@ void ConnectionHandle::progress_all_until(std::function<bool(Endpoint& e)>&& fn)
 }
 
 void ConnectionHandle::listen_and_accept() {
-  progress_all_until([](Endpoint& e) { return e.conn != nullptr; });
+  progress_all_until([](Endpoint& e) { return e.running(); });
 }
 
 void ConnectionHandle::wait_for_disconnect() {
-  progress_all_until([](Endpoint& e) { return e.stopped(); });
+  progress_all_until([](Endpoint& e) { return e.exited(); });
 }
 
 void ConnectionHandle::connect() {
-  progress_all_until([](Endpoint& e) { return e.conn != nullptr; });
+  progress_all_until([](Endpoint& e) { return e.running(); });
 }
 
 void ConnectionHandle::disconnect() {
-  std::ranges::for_each(pending_endpoints, [](Endpoint& e) { e.stop(); });
-  progress_all_until([](Endpoint& e) { return e.conn == nullptr; });
+  std::ranges::for_each(pending_endpoints, [](Endpoint& e) {
+    e.stop();
+    doca_check_ext(doca_ctx_stop(doca_comch_client_as_ctx(e.c)), DOCA_ERROR_IN_PROGRESS);
+    e.conn = nullptr;
+  });
+  progress_all_until([](Endpoint& e) { return e.exited(); });
 }
 
 }  // namespace doca::comch::ctrl_path

@@ -12,7 +12,7 @@ bool Endpoint::progress() {
   }
   if (ec == 1) {
     auto ctx = reinterpret_cast<OpContext*>(wc.wr_id);
-    if (wc.status == IBV_WC_WR_FLUSH_ERR) {  // diconnected
+    if (wc.status == IBV_WC_WR_FLUSH_ERR) {  // diconnected, notify workers to stop
       ctx->op_res.set_value(0);
     } else if (wc.status == IBV_WC_SUCCESS) {
       switch (wc.opcode) {
@@ -84,7 +84,6 @@ op_res_future_t Endpoint::post_send(OpContext& ctx) {
 Endpoint::Endpoint(naive::Buffers& buffers_) : buffers(buffers_) {}
 
 Endpoint::~Endpoint() {
-  assert(stopped());
   if (qp != nullptr) {
     if (auto ec = ibv_destroy_qp(qp); ec != 0) {
       die("Fail to destroy qp, errno {}", errno);

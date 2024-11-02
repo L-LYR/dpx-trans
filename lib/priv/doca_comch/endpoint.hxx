@@ -18,10 +18,6 @@ class Endpoint : public EndpointBase {
 
   ~Endpoint();
 
-  void prepare();
-  void run();
-  void stop();
-
   bool progress();
 
   op_res_future_t post_recv(OpContext &ctx);

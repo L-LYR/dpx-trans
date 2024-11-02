@@ -46,14 +46,7 @@ class Transport {
         conn_handle(param),
         buffers(n_workers * 2, max_rpc_msg_size),
         ctrl_e(buffers) {
-    ctrl_e.prepare();
-    conn_handle.associate(ctrl_e);
-    if (param.passive) {
-      conn_handle.listen_and_accept();
-      std::thread([this]() { conn_handle.wait_for_disconnect(); }).detach();
-    } else {
-      conn_handle.connect();
-    }
+    establish_connections();
   }
 
   Transport(doca::Device &dev, uint32_t n_workers_, uint32_t max_rpc_msg_size,
@@ -64,28 +57,10 @@ class Transport {
         conn_handle(param),
         buffers(n_workers * 2, max_rpc_msg_size),
         ctrl_e(dev, buffers, param.name) {
-    ctrl_e.prepare();
-    conn_handle.associate(ctrl_e);
-    if (param.passive) {
-      TRACE("listen and accept");
-      conn_handle.listen_and_accept();
-    } else {
-      TRACE("connect");
-      conn_handle.connect();
-    }
-    TRACE("START!");
+    establish_connections();
   }
 
-  ~Transport() {
-    if (!param.passive) {
-      conn_handle.disconnect();
-    } else {
-      if constexpr (b == Backend::DOCA_Comch) {
-        TRACE("wait for disconnect");
-        conn_handle.wait_for_disconnect();
-      }
-    }
-  }
+  ~Transport() { terminate_connections(); }
 
   template <Rpc Rpc>
   resp_future_t<Rpc> call(const req_t<Rpc> &r) {
@@ -142,9 +117,11 @@ class Transport {
     workers.reserve(n_workers);
     for (auto i = 0uz; i < workers.capacity(); ++i) {
       workers.emplace_back([this, i]() {
+        active_workers++;
         while (ctrl_e.running()) {
           serve_once(i);
         }
+        active_workers--;
       });
     }
     for (auto &worker : workers) {
@@ -153,6 +130,27 @@ class Transport {
   }
 
  private:
+  void terminate_connections() {
+    if (param.passive) {
+      if constexpr (b == Backend::DOCA_Comch) {
+        conn_handle.wait_for_disconnect();
+      }
+    } else {
+      conn_handle.disconnect();
+    }
+  }
+  void establish_connections() {
+    conn_handle.associate(ctrl_e);
+    if (param.passive) {
+      conn_handle.listen_and_accept();
+      if constexpr (b == Backend::Verbs || b == Backend::TCP) {
+        std::thread([this]() { conn_handle.wait_for_disconnect(); }).detach();
+      }
+    } else {
+      conn_handle.connect();
+    }
+  }
+
   template <Rpc Rpc>
   bool dispatch_response(int64_t seq, rpc_id_t id, Deserializer &deserializer) {
     if (Rpc::id == id) {
@@ -186,6 +184,11 @@ class Transport {
     // constexpr auto n = sizeof...(Rpcs);
     // constexpr uint64_t ids[] = {Rpcs::id...};
 
+    if (!ctrl_e.running()) {
+      TRACE("not running");
+      return;
+    }
+
     auto buf = acquire_buffer();
     buf.clear();
 
@@ -196,6 +199,7 @@ class Transport {
       die("Fail to read payload, errno: {}", -n_read);
     } else if (n_read == 0) {
       TRACE("closed");
+      release_buffer(std::move(recv_ctx.buf));
       return;
     }
     TRACE("worker {} read: {}", idx, n_read);
@@ -222,6 +226,10 @@ class Transport {
     auto n_write = ctrl_e.post_send(send_ctx).get();
     if (n_write < 0) {
       die("Fail to write payload, errno: {}", -n_write);
+    } else if (n_write == 0) {
+      TRACE("closed");
+      release_buffer(std::move(send_ctx.buf));
+      return;
     }
     TRACE("worker {} write: {}", idx, n_write);
 
@@ -241,7 +249,7 @@ class Transport {
   void release_buffer(BorrowedBuffer &&buf) { buffers.release_one(std::move(buf)); }
 
   void progress_until(std::function<bool()> &&fn) {
-    while (!(outstanding_rpcs.empty() && fn())) {
+    while (!(outstanding_rpcs.empty() && active_workers == 0 && fn())) {
       if (!ctrl_e.progress()) {
         boost::this_fiber::yield();
       }
@@ -255,6 +263,7 @@ class Transport {
   naive::Buffers buffers;
   CtrlPathEndpointType ctrl_e;
   std::unordered_map<int64_t, ContextBase *> outstanding_rpcs;
+  uint32_t active_workers = 0;
 };
 
 template <Backend b, Rpc... rpcs>

@@ -33,24 +33,6 @@ Endpoint::Endpoint(Device &dev_, naive::Buffers &buffers_, std::string_view name
   } else {
     doca_check(doca_comch_client_create(dev.dev, name.data(), &c));
   }
-}
-
-Endpoint::~Endpoint() {
-  if (side == Side::ServerSide) {
-    if (s != nullptr) {
-      doca_check(doca_comch_server_destroy(s));
-    }
-  } else {
-    if (c != nullptr) {
-      doca_check(doca_comch_client_destroy(c));
-    }
-  }
-  if (pe != nullptr) {
-    doca_check(doca_pe_destroy(pe));
-  }
-}
-
-void Endpoint::prepare() {
   doca_check(doca_comch_cap_get_max_msg_size(doca_dev_as_devinfo(dev.dev), &max_msg_size));
   doca_check(doca_comch_cap_get_max_recv_queue_size(doca_dev_as_devinfo(dev.dev), &recv_queue_size));
   TRACE("{} {}", max_msg_size, recv_queue_size);
@@ -80,22 +62,27 @@ void Endpoint::prepare() {
     doca_check(doca_ctx_set_user_data(ctx, doca_data(this)));
     doca_check_ext(doca_ctx_start(ctx), DOCA_ERROR_IN_PROGRESS);
   }
-  EndpointBase::prepare();
 }
 
-void Endpoint::run() { EndpointBase::run(); }
-
-void Endpoint::stop() {
-  if (side == Side::ClientSide) {
-    doca_check_ext(doca_ctx_stop(doca_comch_client_as_ctx(c)), DOCA_ERROR_IN_PROGRESS);
+Endpoint::~Endpoint() {
+  if (side == Side::ServerSide) {
+    if (s != nullptr) {
+      doca_check(doca_comch_server_destroy(s));
+    }
+  } else {
+    if (c != nullptr) {
+      doca_check(doca_comch_client_destroy(c));
+    }
   }
-  EndpointBase::stop();
+  if (pe != nullptr) {
+    doca_check(doca_pe_destroy(pe));
+  }
 }
 
 bool Endpoint::progress() { return doca_pe_progress(pe); }
 
 op_res_future_t Endpoint::post_recv(OpContext &ctx) {
-  if (stopped()) {
+  if (stopping()) {
     ctx.op_res.set_value(0);
     return ctx.op_res.get_future();
   }
@@ -122,11 +109,7 @@ void Endpoint::state_change_cb(const doca_data ctx_user_data, doca_ctx *, doca_c
   TRACE("DOCA Comch {} {} state change: {} -> {}", e->name, side, prev_state, next_state);
   switch (next_state) {
     case DOCA_CTX_STATE_IDLE: {
-      if constexpr (side == Side::ClientSide) {
-        e->conn = nullptr;
-      } else if constexpr (side == Side::ServerSide) {
-        e->stop();
-      }
+      e->shutdown();  // must progress to this state
     } break;
     case DOCA_CTX_STATE_STARTING: {
     } break;
@@ -164,10 +147,11 @@ void Endpoint::disconnect_event_cb(doca_comch_event_connection_status_changed *,
   auto e = reinterpret_cast<Endpoint *>(get_user_data_from_connection<Side::ServerSide>(conn));
   if (e->conn == conn) {
     e->conn = nullptr;
+    e->stop();
     doca_check_ext(doca_ctx_stop(doca_comch_server_as_ctx(e->s)), DOCA_ERROR_IN_PROGRESS);
     for (OpContext &op_ctx : e->recv_ops_q) {
       op_ctx.op_res.set_value(0);
-    }
+    }  // notify all workers
     TRACE("Disconnection of {}", e->name);
   } else {
     WARN("Only support one connection, ignored");

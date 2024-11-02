@@ -26,7 +26,7 @@ class ConnectionHandle : public ConnectionHandleBase<ConnectionHandle, Endpoint,
   void disconnect();
 
  private:
-  void progress_all_until(std::function<bool(Endpoint &e)> &&fn);
+  void progress_all_until(std::function<bool(Endpoint &e)> &&predictor);
 };
 
 }  // namespace doca::comch::ctrl_path
