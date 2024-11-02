@@ -95,6 +95,10 @@ void Endpoint::stop() {
 bool Endpoint::progress() { return doca_pe_progress(pe); }
 
 op_res_future_t Endpoint::post_recv(OpContext &ctx) {
+  if (stopped()) {
+    ctx.op_res.set_value(0);
+    return ctx.op_res.get_future();
+  }
   recv_ops_q.emplace_back(ctx);
   return ctx.op_res.get_future();
 }
