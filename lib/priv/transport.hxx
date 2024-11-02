@@ -81,6 +81,7 @@ class Transport {
       conn_handle.disconnect();
     } else {
       if constexpr (b == Backend::DOCA_Comch) {
+        TRACE("wait for disconnect");
         conn_handle.wait_for_disconnect();
       }
     }
