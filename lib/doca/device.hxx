@@ -4,16 +4,19 @@
 
 #include <string_view>
 
+#include "priv/common.hxx"
 #include "util/noncopyable.hxx"
 #include "util/nonmovable.hxx"
 
 namespace doca {
 
 namespace comch::ctrl_path {
+template <Side s>
 class Endpoint;
 }
 
 class Device : Noncopyable, Nonmovable {
+  template <Side s>
   friend class comch::ctrl_path::Endpoint;
   friend class Buffers;
 

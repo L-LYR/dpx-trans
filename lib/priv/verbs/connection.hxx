@@ -2,13 +2,15 @@
 
 #include <rdma/rdma_cma.h>
 
-#include "priv/common.hxx"
+#include <string>
+#include <vector>
+
 #include "util/noncopyable.hxx"
 #include "util/nonmovable.hxx"
 
 namespace verbs {
 
-struct ConnectionParam : ConnectionCommonParam {
+struct ConnectionParam {
   std::string remote_ip = "";
   std::string local_ip = "";
   uint16_t remote_port = 0;
@@ -30,12 +32,19 @@ struct EventChannel : Noncopyable, Nonmovable {
   rdma_event_channel* p = nullptr;
 };
 
-class ConnectionHandle : public ConnectionHandleBase<ConnectionHandle, Endpoint, ConnectionParam> {
- public:
-  ConnectionHandle(const ConnectionParam& param);
-  ~ConnectionHandle();
+class ConnectionHandle {
+  using EndpointRef = std::reference_wrapper<Endpoint>;
+  using EndpointRefs = std::vector<EndpointRef>;
 
  public:
+  ConnectionHandle(const ConnectionParam& param_);
+
+  ~ConnectionHandle();
+
+  ConnectionHandle& associate(Endpoint& e);
+
+  ConnectionHandle& associate(EndpointRefs&& es);
+
   void listen_and_accept();
   void wait_for_disconnect();
 
@@ -45,6 +54,8 @@ class ConnectionHandle : public ConnectionHandleBase<ConnectionHandle, Endpoint,
  private:
   EventChannel c;
   rdma_cm_id* id = nullptr;
+  const ConnectionParam& param;
+  EndpointRefs pending_endpoints;
 };
 
 }  // namespace verbs

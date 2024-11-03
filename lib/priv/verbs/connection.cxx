@@ -82,7 +82,7 @@ std::string get_cm_connection_info(rdma_cm_id* id) {
 
 }  // namespace
 
-ConnectionHandle::ConnectionHandle(const ConnectionParam& param) : ConnectionHandleBase(param) {}
+ConnectionHandle::ConnectionHandle(const ConnectionParam& param_) : param(param_) {}
 
 ConnectionHandle::~ConnectionHandle() {
   if (id != nullptr) {
@@ -90,6 +90,17 @@ ConnectionHandle::~ConnectionHandle() {
       die("Fail to destroy listening id, errno: {}", errno);
     }
   }
+}
+
+ConnectionHandle& ConnectionHandle::associate(Endpoint& e) {
+  pending_endpoints.emplace_back(e);
+  return *this;
+}
+
+ConnectionHandle& ConnectionHandle::associate(EndpointRefs&& es) {
+  pending_endpoints.insert(pending_endpoints.end(), std::make_move_iterator(es.begin()),
+                           std::make_move_iterator(es.end()));
+  return *this;
 }
 
 void ConnectionHandle::listen_and_accept() {

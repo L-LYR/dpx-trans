@@ -61,12 +61,22 @@ void close_socket(int s) {
 
 }  // namespace
 
-ConnectionHandle::ConnectionHandle(const ConnectionParam &info_) : ConnectionHandleBase(info_) {}
+ConnectionHandle::ConnectionHandle(const ConnectionParam &param_) : param(param_) {}
 
 ConnectionHandle::~ConnectionHandle() { close_socket(conn_sock); };
 
+ConnectionHandle &ConnectionHandle::associate(Endpoint &e) {
+  pending_endpoints.emplace_back(e);
+  return *this;
+}
+
+ConnectionHandle &ConnectionHandle::associate(EndpointRefs &&es) {
+  pending_endpoints.insert(pending_endpoints.end(), std::make_move_iterator(es.begin()),
+                           std::make_move_iterator(es.end()));
+  return *this;
+}
+
 void ConnectionHandle::listen_and_accept() {
-  assert(param.passive);
   auto listen_sock = setup_and_bind(param.local_ip, param.local_port);
   if (auto ec = ::listen(listen_sock, pending_endpoints.size() + 1); ec < 0) {
     die("Fail to listen, errno: {}", errno);
@@ -87,7 +97,6 @@ void ConnectionHandle::listen_and_accept() {
 }
 
 void ConnectionHandle::wait_for_disconnect() {
-  assert(param.passive);
   char c = 0;
   read(conn_sock, &c, 1);
   // we don't care the return value, any case will indicate the connection is going to close.
@@ -99,7 +108,6 @@ void ConnectionHandle::wait_for_disconnect() {
 }
 
 void ConnectionHandle::connect() {
-  assert(!param.passive);
   auto remote_addr_in = sockaddr_in{
       .sin_family = AF_INET,
       .sin_port = htons(param.remote_port),
@@ -122,7 +130,6 @@ void ConnectionHandle::connect() {
 }
 
 void ConnectionHandle::disconnect() {
-  assert(!param.passive);
   char c = 'x';
   write(conn_sock, &c, 1);
   std::ranges::for_each(pending_endpoints, [](Endpoint &e) {

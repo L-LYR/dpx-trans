@@ -30,12 +30,10 @@ int main(int argc, char* argv[]) {
     std::cerr << e.what() << std::endl << std::endl << p;
     return -1;
   }
+  Config<Backend::DOCA_Comch> c{
+      .queue_depth = args::get(n_caller) * 2, .max_rpc_msg_size = 4080, .conn_param = {.name = "sample"}};
   doca::Device dev(args::get(dev_pci_address));
-  Transport<Backend::DOCA_Comch, EchoRpc> t(dev, args::get(n_caller), 4096,
-                                            ConnectionParam<Backend::DOCA_Comch>{
-                                                {.passive = false},
-                                                .name = args::get(server_name),
-                                            });
+  Transport<Backend::DOCA_Comch, Side::ClientSide, EchoRpc> t(dev, c);
 
   auto call_fn = [&]() {
     for (auto i = 0; i < 2; i++) {

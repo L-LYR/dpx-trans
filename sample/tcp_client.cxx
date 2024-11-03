@@ -31,13 +31,18 @@ int main(int argc, char* argv[]) {
     return -1;
   }
 
-  Transport<Backend::TCP, EchoRpc> t(args::get(n_caller), 4096,
-                                     ConnectionParam<Backend::TCP>{
-                                         {.passive = false},
-                                         .remote_ip = args::get(remote_ip),
-                                         .local_ip = args::get(local_ip),
-                                         .remote_port = args::get(remote_port),
-                                     });
+  Config<Backend::TCP> c{
+      .queue_depth = args::get(n_caller) * 2,
+      .max_rpc_msg_size = 4096,
+      .conn_param =
+          {
+              .remote_ip = args::get(remote_ip),
+              .local_ip = args::get(local_ip),
+              .remote_port = args::get(remote_port),
+          },
+  };
+
+  Transport<Backend::TCP, Side::ClientSide, EchoRpc> t(c);
 
   auto call_fn = [&]() {
     for (auto i = 0; i < 10000; i++) {

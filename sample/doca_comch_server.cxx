@@ -28,13 +28,12 @@ int main(int argc, char* argv[]) {
     std::cerr << e.what() << std::endl << std::endl << p;
     return -1;
   }
+
+  Config<Backend::DOCA_Comch> c{
+      .queue_depth = args::get(n_worker), .max_rpc_msg_size = 4080, .conn_param = {.name = "sample"}};
+  doca::Device dev(args::get(dev_pci_address), args::get(rep_pci_address), DOCA_DEVINFO_REP_FILTER_NET);
+  Transport<Backend::DOCA_Comch, Side::ServerSide, EchoRpc> t(dev, c);
   auto echo = [&]() {
-    doca::Device dev(args::get(dev_pci_address), args::get(rep_pci_address), DOCA_DEVINFO_REP_FILTER_NET);
-    Transport<Backend::DOCA_Comch, EchoRpc> t(dev, args::get(n_worker), 4096,
-                                              ConnectionParam<Backend::DOCA_Comch>{
-                                                  {.passive = true},
-                                                  .name = args::get(server_name),
-                                              });
     TransportGuard g(t);
     t.serve();
   };
