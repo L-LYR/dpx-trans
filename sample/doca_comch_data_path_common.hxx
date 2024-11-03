@@ -60,23 +60,9 @@ class Endpoint : public EndpointBase {
 
   void prepare() {
     {
-      doca_check(doca_comch_producer_task_send_set_conf(producer.get(), producer_send_task_comp_cb,
-                                                        producer_send_task_err_cb, buffers.size() / 2));
-      auto ctx = producer_as_doca_ctx();
-      doca_check(doca_ctx_set_state_changed_cb(ctx, producer_state_change_cb));
-      doca_check(doca_ctx_set_user_data(ctx, doca_data(this)));
-      doca_check(doca_pe_connect_ctx(producer_pe.get(), ctx));
-      doca_check(doca_ctx_start(ctx));
+      
     }
-    {
-      doca_check(doca_comch_consumer_task_post_recv_set_conf(consumer.get(), consumer_post_recv_task_comp_cb,
-                                                             consumer_post_recv_task_err_cb, buffers.size() / 2));
-      auto ctx = consumer_as_doca_ctx();
-      doca_check(doca_ctx_set_state_changed_cb(ctx, consumer_state_change_cb));
-      doca_check(doca_ctx_set_user_data(ctx, doca_data(this)));
-      doca_check(doca_pe_connect_ctx(consumer_pe.get(), ctx));
-      doca_check_ext(doca_ctx_start(ctx), DOCA_ERROR_IN_PROGRESS);
-    }
+
     EndpointBase::prepare();
   }
 
@@ -89,60 +75,11 @@ class Endpoint : public EndpointBase {
     progress_until([this]() { return stopped(); });
   }
 
-  static void producer_state_change_cb(const doca_data ctx_user_data, doca_ctx *, doca_ctx_states prev_state,
-                                       doca_ctx_states next_state) {
-    auto e = reinterpret_cast<Endpoint *>(ctx_user_data.ptr);
-    TRACE("DOCA Comch {} {} producer state change: {} -> {}", e->comch.name, side, prev_state, next_state);
-  }
 
-  static void consumer_state_change_cb(const doca_data ctx_user_data, doca_ctx *, doca_ctx_states prev_state,
-                                       doca_ctx_states next_state) {
-    auto e = reinterpret_cast<Endpoint *>(ctx_user_data.ptr);
-    TRACE("DOCA Comch {} {} consumer state change: {} -> {}", e->comch.name, side, prev_state, next_state);
-    switch (next_state) {
-      case DOCA_CTX_STATE_IDLE: {
-        e->stop();
-      } break;
-      case DOCA_CTX_STATE_STARTING: {
-      } break;
-      case DOCA_CTX_STATE_RUNNING: {
-        if constexpr (side == Side::ServerSide) {
-          e->run();
-        }
-      } break;
-      case DOCA_CTX_STATE_STOPPING: {
-      } break;
-    }
-  }
 
-  static void producer_send_task_comp_cb(struct doca_comch_producer_task_send *task, union doca_data,
-                                         union doca_data ctx_user_data) {
-    [[maybe_unused]] auto endpoint = reinterpret_cast<Endpoint *>(ctx_user_data.ptr);
-    [[maybe_unused]] auto buf = doca_comch_producer_task_send_get_buf(task);
-    INFO("Producer send task done!");
-    doca_task_free(doca_comch_producer_task_send_as_task(task));
-  }
-  static void producer_send_task_err_cb(struct doca_comch_producer_task_send *task, union doca_data,
-                                        union doca_data ctx_user_data) {
-    [[maybe_unused]] auto endpoint = reinterpret_cast<Endpoint *>(ctx_user_data.ptr);
-    [[maybe_unused]] auto buf = doca_comch_producer_task_send_get_buf(task);
-    ERROR("Producer send task failed!");
-    doca_task_free(doca_comch_producer_task_send_as_task(task));
-  }
-  static void consumer_post_recv_task_comp_cb(struct doca_comch_consumer_task_post_recv *task, union doca_data,
-                                              union doca_data ctx_user_data) {
-    [[maybe_unused]] auto endpoint = reinterpret_cast<Endpoint *>(ctx_user_data.ptr);
-    [[maybe_unused]] auto buf = doca_comch_consumer_task_post_recv_get_buf(task);
-    INFO("Consumer post recv task done!");
-    doca_task_free(doca_comch_consumer_task_post_recv_as_task(task));
-  }
-  static void consumer_post_recv_task_err_cb(struct doca_comch_consumer_task_post_recv *task, union doca_data,
-                                             union doca_data ctx_user_data) {
-    [[maybe_unused]] auto endpoint = reinterpret_cast<Endpoint *>(ctx_user_data.ptr);
-    [[maybe_unused]] auto buf = doca_comch_consumer_task_post_recv_get_buf(task);
-    ERROR("Consumer post recv task failed!");
-    doca_task_free(doca_comch_consumer_task_post_recv_as_task(task));
-  }
+
+
+
 
   ctrl_path::Endpoint<side> &comch;
   MmapBuffers buffers;

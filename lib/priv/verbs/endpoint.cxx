@@ -81,7 +81,7 @@ op_res_future_t Endpoint::post_send(OpContext& ctx) {
   return ctx.op_res.get_future();
 }
 
-Endpoint::Endpoint(naive::Buffers& buffers_) : buffers(buffers_) {}
+Endpoint::Endpoint(naive::Buffers& buffers_) : buffers(buffers_) { EndpointBase::prepare(); }
 
 Endpoint::~Endpoint() {
   if (qp != nullptr) {

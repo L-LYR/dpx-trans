@@ -12,7 +12,9 @@ struct ConnectionParam {
 
 }  // namespace doca::comch
 
-namespace doca::comch::ctrl_path {
+namespace doca::comch {
+
+namespace ctrl_path {
 
 template <Side s>
 class Endpoint;
@@ -82,4 +84,75 @@ class ConnectionHandle {
   EndpointRefs pending_endpoints;
 };
 
-}  // namespace doca::comch::ctrl_path
+}  // namespace ctrl_path
+
+namespace data_path {
+
+template <Side s>
+class Endpoint;
+
+template <Side s>
+class ConnectionHandle {
+  using Endpoint = Endpoint<s>;
+  using EndpointRef = std::reference_wrapper<Endpoint>;
+  using EndpointRefs = std::vector<EndpointRef>;
+
+ public:
+  ConnectionHandle(const ConnectionParam& param_) : param(param_) {}
+
+  ~ConnectionHandle() {}
+
+  ConnectionHandle& associate(Endpoint& e) {
+    pending_endpoints.emplace_back(e);
+    return *this;
+  }
+
+  ConnectionHandle& associate(EndpointRefs&& es) {
+    pending_endpoints.insert(pending_endpoints.end(), std::make_move_iterator(es.begin()),
+                             std::make_move_iterator(es.end()));
+    return *this;
+  }
+
+  void listen_and_accept() {
+    progress_all_until([](Endpoint& e) { return e.running(); });
+  }
+
+  void wait_for_disconnect() {
+    progress_all_until([](Endpoint& e) { return e.exited(); });
+  }
+
+  void connect() {
+    progress_all_until([](Endpoint& e) { return e.running(); });
+  }
+
+  void disconnect() {
+    std::ranges::for_each(pending_endpoints, [](Endpoint& e) { e.stop(); });
+    progress_all_until([](Endpoint& e) { return e.exited(); });
+  }
+
+ private:
+  void progress_all_until(std::function<bool(Endpoint& e)>&& predictor) {
+    while (true) {
+      uint32_t n_satisfied = 0;
+      for (Endpoint& e : pending_endpoints) {
+        if (!predictor(e)) {
+          e.progress();
+        } else {
+          n_satisfied++;
+        }
+      }
+      if (n_satisfied == pending_endpoints.size()) {
+        return;
+      } else {
+        std::this_thread::sleep_for(10us);
+      }
+    }
+  }
+
+  const ConnectionParam& param;
+  EndpointRefs pending_endpoints;
+};
+
+}  // namespace data_path
+
+}  // namespace doca::comch

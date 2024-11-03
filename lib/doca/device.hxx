@@ -11,8 +11,10 @@
 namespace doca {
 
 namespace comch::ctrl_path {
+
 template <Side s>
 class Endpoint;
+
 }
 
 class Device : Noncopyable, Nonmovable {

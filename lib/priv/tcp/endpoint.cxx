@@ -13,6 +13,7 @@ Endpoint::Endpoint(naive::Buffers &buffers_) : buffers(buffers_) {
   if (auto ec = io_uring_register_buffers(&ring, &v, 1); ec < 0) {
     die("Fail to register buffers, errno: {}", -ec);
   }
+  EndpointBase::prepare();
 }
 
 Endpoint::~Endpoint() {
