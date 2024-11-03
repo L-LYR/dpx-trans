@@ -29,13 +29,19 @@ int main(int argc, char* argv[]) {
     std::cerr << e.what() << std::endl << std::endl << p;
     return -1;
   }
-  Transport<Backend::Verbs, EchoRpc> t(args::get(n_caller), 4096,
-                                       ConnectionParam<Backend::Verbs>{
-                                           {.passive = false},
-                                           .remote_ip = args::get(remote_ip),
-                                           .local_ip = args::get(local_ip),
-                                           .remote_port = args::get(remote_port),
-                                       });
+
+  Config<Backend::Verbs> c{
+      .queue_depth = args::get(n_caller) * 2,
+      .max_rpc_msg_size = 4096,
+      .conn_param =
+          {
+              .remote_ip = args::get(remote_ip),
+              .local_ip = args::get(local_ip),
+              .remote_port = args::get(remote_port),
+          },
+  };
+
+  Transport<Backend::Verbs, Side::ClientSide, EchoRpc> t(c);
 
   auto call_fn = [&]() {
     for (auto i = 0; i < 10000; i++) {

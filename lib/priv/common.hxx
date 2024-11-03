@@ -93,35 +93,6 @@ class EndpointBase : Noncopyable, Nonmovable {
   std::atomic<Status> s;
 };
 
-struct ConnectionCommonParam {
-  bool passive;
-};
-
-template <typename Derived, typename Endpoint, typename ConnectionParam>
-class ConnectionHandleBase : Noncopyable, Nonmovable {
- public:
-  using EndpointRef = std::reference_wrapper<Endpoint>;
-  using EndpointRefs = std::vector<EndpointRef>;
-
-  ~ConnectionHandleBase() = default;
-
-  Derived &associate(Endpoint &e) {
-    pending_endpoints.emplace_back(e);
-    return *static_cast<Derived *>(this);
-  }
-  Derived &associate(EndpointRefs &&es) {
-    pending_endpoints.insert(pending_endpoints.end(), std::make_move_iterator(es.begin()),
-                             std::make_move_iterator(es.end()));
-    return *static_cast<Derived *>(this);
-  }
-
- protected:
-  ConnectionHandleBase(const ConnectionParam &param_) : param(param_) {}
-
-  const ConnectionParam &param;
-  EndpointRefs pending_endpoints;
-};
-
 template <>
 struct std::formatter<Side> : std::formatter<const char *> {
   template <typename Context>

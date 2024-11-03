@@ -16,54 +16,63 @@
 // clang-format off
 template<Backend b>
   using ConnectionParam =
-    std::conditional_t<b == Backend::TCP, tcp::ConnectionParam,
-    std::conditional_t<b == Backend::Verbs, verbs::ConnectionParam,
-    std::conditional_t<b == Backend::DOCA_Comch, doca::comch::ConnectionParam, void>>>;
+    std::conditional_t<b == Backend::TCP,        tcp::ConnectionParam,
+    std::conditional_t<b == Backend::Verbs,      verbs::ConnectionParam,
+    std::conditional_t<b == Backend::DOCA_Comch, doca::comch::ConnectionParam,
+                                                 void>>>;
 // clang-format on
 
-template <Backend b, Rpc... rpcs>
+template <Backend b>
+struct Config {
+  uint32_t queue_depth;
+  uint32_t max_rpc_msg_size;
+  ConnectionParam<b> conn_param;
+};
+
+template <Backend b, Side s, Rpc... rpcs>
 class Transport {
   // clang-format off
   using CtrlPathEndpointType =
-    std::conditional_t<b == Backend::TCP, tcp::Endpoint,
-    std::conditional_t<b == Backend::Verbs, verbs::Endpoint,
-    std::conditional_t<b == Backend::DOCA_Comch, doca::comch::ctrl_path::Endpoint, void>>>;
+    std::conditional_t<b == Backend::TCP,        tcp::Endpoint,
+    std::conditional_t<b == Backend::Verbs,      verbs::Endpoint,
+    std::conditional_t<b == Backend::DOCA_Comch, doca::comch::ctrl_path::Endpoint<s>,
+                                                 void>>>;
   using ConnectionHandleType =
-    std::conditional_t<b == Backend::TCP, tcp::ConnectionHandle,
-    std::conditional_t<b == Backend::Verbs, verbs::ConnectionHandle,
-    std::conditional_t<b == Backend::DOCA_Comch, doca::comch::ctrl_path::ConnectionHandle, void>>>;
+    std::conditional_t<b == Backend::TCP,        tcp::ConnectionHandle,
+    std::conditional_t<b == Backend::Verbs,      verbs::ConnectionHandle,
+    std::conditional_t<b == Backend::DOCA_Comch, doca::comch::ctrl_path::ConnectionHandle<s>,
+                                                 void>>>;
   // clang-format on
   using ConnectionParam = ConnectionParam<b>;
 
-  template <Backend, Rpc...>
+  template <Backend, Side, Rpc...>
   friend class TransportGuard;
 
  public:
-  Transport(uint32_t n_workers_, uint32_t max_rpc_msg_size, const ConnectionParam &param)
+  Transport(Config<b> config_)
     requires(b == Backend::TCP || b == Backend::Verbs)
-      : n_workers(n_workers_),
-        param(param),
-        conn_handle(param),
-        buffers(n_workers * 2, max_rpc_msg_size),
+      : config(config_),
+        conn_handle(config.conn_param),
+        buffers(config.queue_depth, config.max_rpc_msg_size),
         ctrl_e(buffers) {
     establish_connections();
   }
 
-  Transport(doca::Device &dev, uint32_t n_workers_, uint32_t max_rpc_msg_size,
-            const doca::comch::ConnectionParam &param)
+  Transport(doca::Device &dev, Config<b> config_)
     requires(b == Backend::DOCA_Comch)
-      : n_workers(n_workers_),
-        param(param),
-        conn_handle(param),
-        buffers(n_workers * 2, max_rpc_msg_size),
-        ctrl_e(dev, buffers, param.name) {
+      : config(config_),
+        conn_handle(config.conn_param),
+        buffers(config.queue_depth, config.max_rpc_msg_size),
+        ctrl_e(dev, buffers, config.conn_param.name) {
     establish_connections();
   }
 
   ~Transport() { terminate_connections(); }
 
   template <Rpc Rpc>
-  resp_future_t<Rpc> call(const req_t<Rpc> &r) {
+  resp_future_t<Rpc> call(const req_t<Rpc> &r)
+    requires(s == Side::ClientSide)
+  {
     auto call_seq = seq++;
     {
       TRACE("caller post recv");
@@ -112,9 +121,11 @@ class Transport {
     return f;
   }
 
-  void serve() {
+  void serve()
+    requires(s == Side::ServerSide)
+  {
     std::vector<boost::fibers::fiber> workers;
-    workers.reserve(n_workers);
+    workers.reserve(config.queue_depth);
     for (auto i = 0uz; i < workers.capacity(); ++i) {
       workers.emplace_back([this, i]() {
         active_workers++;
@@ -131,7 +142,7 @@ class Transport {
 
  private:
   void terminate_connections() {
-    if (param.passive) {
+    if constexpr (s == Side::ServerSide) {
       if constexpr (b == Backend::DOCA_Comch) {
         conn_handle.wait_for_disconnect();
       }
@@ -141,7 +152,7 @@ class Transport {
   }
   void establish_connections() {
     conn_handle.associate(ctrl_e);
-    if (param.passive) {
+    if constexpr (s == Side::ServerSide) {
       conn_handle.listen_and_accept();
       if constexpr (b == Backend::Verbs || b == Backend::TCP) {
         std::thread([this]() { conn_handle.wait_for_disconnect(); }).detach();
@@ -152,7 +163,9 @@ class Transport {
   }
 
   template <Rpc Rpc>
-  bool dispatch_response(int64_t seq, rpc_id_t id, Deserializer &deserializer) {
+  bool dispatch_response(int64_t seq, rpc_id_t id, Deserializer &deserializer)
+    requires(s == Side::ClientSide)
+  {
     if (Rpc::id == id) {
       resp_t<Rpc> resp = {};
       deserializer(resp).or_throw();
@@ -168,7 +181,9 @@ class Transport {
   }
 
   template <Rpc Rpc>
-  bool dispatch_request(int64_t seq, rpc_id_t id, Deserializer &deserializer, Serializer &serializer) {
+  bool dispatch_request(int64_t seq, rpc_id_t id, Deserializer &deserializer, Serializer &serializer)
+    requires(s == Side::ServerSide)
+  {
     if (Rpc::id == id) {
       req_t<Rpc> req = {};
       deserializer(req).or_throw();
@@ -180,7 +195,9 @@ class Transport {
     return false;
   }
 
-  void serve_once(size_t idx) {
+  void serve_once(size_t idx)
+    requires(s == Side::ServerSide)
+  {
     // constexpr auto n = sizeof...(Rpcs);
     // constexpr uint64_t ids[] = {Rpcs::id...};
 
@@ -248,17 +265,16 @@ class Transport {
 
   void release_buffer(BorrowedBuffer &&buf) { buffers.release_one(std::move(buf)); }
 
-  void progress_until(std::function<bool()> &&fn) {
-    while (!(outstanding_rpcs.empty() && active_workers == 0 && fn())) {
+  void progress_until(std::function<bool()> &&predictor) {
+    while (!(outstanding_rpcs.empty() && active_workers == 0 && predictor())) {
       if (!ctrl_e.progress()) {
         boost::this_fiber::yield();
       }
     }
   }
 
-  const size_t n_workers = -1;
+  const Config<b> config;
   int64_t seq = 1;
-  ConnectionParam param;
   ConnectionHandleType conn_handle;
   naive::Buffers buffers;
   CtrlPathEndpointType ctrl_e;
@@ -266,22 +282,22 @@ class Transport {
   uint32_t active_workers = 0;
 };
 
-template <Backend b, Rpc... rpcs>
+template <Backend b, Side s, Rpc... rpcs>
 class TransportGuard : Noncopyable, Nonmovable {
  public:
-  TransportGuard(Transport<b, rpcs...> &t_) : t(t_) {
+  TransportGuard(Transport<b, s, rpcs...> &t_) : t(t_) {
     // TODO add a futex to fast detect race and then die.
     poller = boost::fibers::fiber([this]() { t.progress_until([this] { return exit; }); });
-    TRACE("Attach to current thread");
+    TRACE("Transport attach to current thread");
   }
   ~TransportGuard() {
     exit = true;
     poller.join();
-    TRACE("Dettach with current thread");
+    TRACE("Transport dettach with current thread");
   }
 
  private:
   bool exit = false;
-  Transport<b, rpcs...> &t;
+  Transport<b, s, rpcs...> &t;
   boost::fibers::fiber poller;
 };

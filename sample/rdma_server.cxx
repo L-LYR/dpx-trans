@@ -26,16 +26,23 @@ int main(int argc, char* argv[]) {
     return -1;
   }
 
+  Config<Backend::Verbs> c{
+      .queue_depth = args::get(n_worker),
+      .max_rpc_msg_size = 4096,
+      .conn_param =
+          {
+              .local_ip = args::get(local_ip),
+              .local_port = args::get(local_port),
+          },
+  };
+
+  Transport<Backend::Verbs, Side::ServerSide, EchoRpc> t(c);
+
   auto echo = [&]() {
-    Transport<Backend::Verbs, EchoRpc> t(args::get(n_worker), 4096,
-                                         ConnectionParam<Backend::Verbs>{
-                                             {.passive = true},
-                                             .local_ip = args::get(local_ip),
-                                             .local_port = args::get(local_port),
-                                         });
     TransportGuard g(t);
     t.serve();
   };
+
   std::jthread bg_e1(echo);
 
   return 0;
