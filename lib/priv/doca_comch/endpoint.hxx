@@ -18,8 +18,20 @@ class Endpoint : public EndpointBase {
   friend class ConnectionHandle;
 
  public:
-  Endpoint(Device &dev_, naive::Buffers &buffers_, std::string_view name_)
-      : dev(dev_), buffers(buffers_), name(std::move(name_)) {
+  Endpoint(Device &dev_, naive::Buffers &buffers_, std::string_view name) : dev(dev_), buffers(buffers_) {
+    uint32_t dev_max_msg_size = 0;
+    uint32_t dev_recv_queue_size = 0;
+    doca_check(doca_comch_cap_get_max_msg_size(doca_dev_as_devinfo(dev.dev), &dev_max_msg_size));
+    doca_check(doca_comch_cap_get_max_recv_queue_size(doca_dev_as_devinfo(dev.dev), &dev_recv_queue_size));
+    if (dev_max_msg_size < buffers.piece_size()) {
+      die("Device max rpc message size: {}", dev_max_msg_size);
+    }
+    if (dev_recv_queue_size < buffers.n_elements()) {
+      die("Device max recv queue depth: {}", dev_recv_queue_size);
+    }
+    dev_recv_queue_size = std::min(static_cast<uint32_t>(buffers.piece_size()), dev_recv_queue_size);
+    dev_max_msg_size = std::min(static_cast<uint32_t>(buffers.n_elements()), dev_max_msg_size);
+
     doca_check(doca_pe_create(&pe));
     if constexpr (side == Side::ServerSide) {
       doca_check(doca_comch_server_create(dev.dev, dev.rep, name.data(), &s));
@@ -28,29 +40,27 @@ class Endpoint : public EndpointBase {
     } else {
       static_unreachable;
     }
-    doca_check(doca_comch_cap_get_max_msg_size(doca_dev_as_devinfo(dev.dev), &max_msg_size));
-    doca_check(doca_comch_cap_get_max_recv_queue_size(doca_dev_as_devinfo(dev.dev), &recv_queue_size));
-    TRACE("{} {}", max_msg_size, recv_queue_size);
+
     if constexpr (side == Side::ServerSide) {
       auto ctx = doca_comch_server_as_ctx(s);
       doca_check(doca_ctx_set_state_changed_cb(ctx, state_change_cb));
-      doca_check(doca_comch_server_task_send_set_conf(s, task_completion_cb, task_error_cb, recv_queue_size));
+      doca_check(doca_comch_server_task_send_set_conf(s, task_completion_cb, task_error_cb, dev_recv_queue_size));
       doca_check(doca_comch_server_event_msg_recv_register(s, recv_event_cb));
       doca_check(doca_comch_server_event_connection_status_changed_register(s, connect_event_cb, disconnect_event_cb));
       doca_check(doca_comch_server_event_consumer_register(s, new_consumer_event_cb, expired_consumer_event_cb));
-      doca_check(doca_comch_server_set_max_msg_size(s, max_msg_size));
-      doca_check(doca_comch_server_set_recv_queue_size(s, recv_queue_size));
+      doca_check(doca_comch_server_set_max_msg_size(s, dev_max_msg_size));
+      doca_check(doca_comch_server_set_recv_queue_size(s, dev_recv_queue_size));
       doca_check(doca_pe_connect_ctx(pe, ctx));
       doca_check(doca_ctx_set_user_data(ctx, doca_data(this)));
       doca_check(doca_ctx_start(ctx));
     } else if constexpr (side == Side::ClientSide) {
       auto ctx = doca_comch_client_as_ctx(c);
       doca_check(doca_ctx_set_state_changed_cb(ctx, state_change_cb));
-      doca_check(doca_comch_client_task_send_set_conf(c, task_completion_cb, task_error_cb, recv_queue_size));
+      doca_check(doca_comch_client_task_send_set_conf(c, task_completion_cb, task_error_cb, dev_recv_queue_size));
       doca_check(doca_comch_client_event_msg_recv_register(c, recv_event_cb));
       doca_check(doca_comch_client_event_consumer_register(c, new_consumer_event_cb, expired_consumer_event_cb));
-      doca_check(doca_comch_client_set_max_msg_size(c, max_msg_size));
-      doca_check(doca_comch_client_set_recv_queue_size(c, recv_queue_size));
+      doca_check(doca_comch_client_set_max_msg_size(c, dev_max_msg_size));
+      doca_check(doca_comch_client_set_recv_queue_size(c, dev_recv_queue_size));
       doca_check(doca_pe_connect_ctx(pe, ctx));
       doca_check(doca_ctx_set_user_data(ctx, doca_data(this)));
       doca_check_ext(doca_ctx_start(ctx), DOCA_ERROR_IN_PROGRESS);
@@ -212,9 +222,6 @@ class Endpoint : public EndpointBase {
  private:
   Device &dev;
   naive::Buffers &buffers;
-  std::string name;
-  uint32_t max_msg_size = -1;
-  uint32_t recv_queue_size = -1;
   doca_pe *pe = nullptr;
   union {
     doca_comch_server *s = nullptr;
