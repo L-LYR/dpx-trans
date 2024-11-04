@@ -36,6 +36,8 @@ class ConnectionHandle {
   }
 
   void listen_and_accept() {
+    progress_all_until([](Endpoint& e) { return e.conn != nullptr; });
+    std::ranges::for_each(pending_endpoints, [](Endpoint& e) { e.prepare(); });
     progress_all_until([](Endpoint& e) { return e.running(); });
   }
 
@@ -44,6 +46,8 @@ class ConnectionHandle {
   }
 
   void connect() {
+    progress_all_until([](Endpoint& e) { return e.conn != nullptr; });
+    std::ranges::for_each(pending_endpoints, [](Endpoint& e) { e.prepare(); });
     progress_all_until([](Endpoint& e) { return e.running(); });
   }
 

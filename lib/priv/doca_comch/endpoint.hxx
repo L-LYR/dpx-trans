@@ -89,9 +89,6 @@ class Endpoint : public EndpointBase {
         doca_check(doca_comch_client_destroy(c));
       }
     }
-    if (dp_pe != nullptr) {
-      doca_check(doca_pe_destroy(dp_pe));
-    }
     if (cp_pe != nullptr) {
       doca_check(doca_pe_destroy(cp_pe));
     }
@@ -121,26 +118,25 @@ class Endpoint : public EndpointBase {
  protected:
   void prepare() {
     assert(conn != nullptr);
-    doca_check(doca_pe_create(&dp_pe));
-    {
-      doca_check(doca_comch_producer_create(conn, &pro));
-      doca_check(doca_comch_producer_task_send_set_conf(pro, producer_send_task_comp_cb, producer_send_task_err_cb,
-                                                        bulk_buffers.n_elements()));
-      auto ctx = doca_comch_producer_as_ctx(pro);
-      doca_check(doca_pe_connect_ctx(dp_pe, ctx));
-      doca_check(doca_ctx_set_state_changed_cb(ctx, producer_state_change_cb));
-      doca_check(doca_ctx_set_user_data(ctx, doca_data(this)));
-      doca_check(doca_ctx_start(ctx));
-    }
     {
       doca_check(doca_comch_consumer_create(conn, bulk_buffers.mmap(), &con));
       doca_check(doca_comch_consumer_task_post_recv_set_conf(
           con, consumer_post_recv_task_comp_cb, consumer_post_recv_task_err_cb, bulk_buffers.n_elements()));
       auto ctx = doca_comch_consumer_as_ctx(con);
-      doca_check(doca_pe_connect_ctx(dp_pe, ctx));
+      doca_check(doca_pe_connect_ctx(cp_pe, ctx));
       doca_check(doca_ctx_set_state_changed_cb(ctx, consumer_state_change_cb));
       doca_check(doca_ctx_set_user_data(ctx, doca_data(this)));
       doca_check_ext(doca_ctx_start(ctx), DOCA_ERROR_IN_PROGRESS);
+    }
+    {
+      doca_check(doca_comch_producer_create(conn, &pro));
+      doca_check(doca_comch_producer_task_send_set_conf(pro, producer_send_task_comp_cb, producer_send_task_err_cb,
+                                                        bulk_buffers.n_elements()));
+      auto ctx = doca_comch_producer_as_ctx(pro);
+      doca_check(doca_pe_connect_ctx(cp_pe, ctx));
+      doca_check(doca_ctx_set_state_changed_cb(ctx, producer_state_change_cb));
+      doca_check(doca_ctx_set_user_data(ctx, doca_data(this)));
+      doca_check(doca_ctx_start(ctx));
     }
     // doca_check(doca_comch_connection_set_user_data(conn, doca_data(this)));
     EndpointBase::prepare();
@@ -171,7 +167,6 @@ class Endpoint : public EndpointBase {
       case DOCA_CTX_STATE_RUNNING: {
         if constexpr (side == Side::ClientSide) {
           doca_check(doca_comch_client_get_connection(e->c, &e->conn));
-          e->prepare();
         }
       } break;
       case DOCA_CTX_STATE_STOPPING: {
@@ -187,7 +182,6 @@ class Endpoint : public EndpointBase {
     auto e = reinterpret_cast<Endpoint *>(get_user_data_from_connection(conn));
     if (e->conn == nullptr) {
       e->conn = conn;
-      e->prepare();
       TRACE("Establish connection of {}", e->name);
     } else {
       WARN("Only support one connection, ignored");
@@ -341,7 +335,6 @@ class Endpoint : public EndpointBase {
     doca_comch_client *c;
   };
   doca_comch_connection *conn = nullptr;
-  doca_pe *dp_pe = nullptr;
   doca_comch_consumer *con = nullptr;
   doca_comch_producer *pro = nullptr;
   uint32_t remote_consumer_id = -1;
