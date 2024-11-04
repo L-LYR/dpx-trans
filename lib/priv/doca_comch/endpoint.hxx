@@ -114,7 +114,7 @@ class Endpoint : public EndpointBase {
     {
       doca_check(doca_comch_producer_create(conn, &pro));
       doca_check(doca_comch_producer_task_send_set_conf(pro, producer_send_task_comp_cb, producer_send_task_err_cb,
-                                                        buffers.size()));
+                                                        bulk_buffers.n_elements()));
       auto ctx = doca_comch_producer_as_ctx(pro);
       doca_check(doca_ctx_set_state_changed_cb(ctx, producer_state_change_cb));
       doca_check(doca_ctx_set_user_data(ctx, doca_data(this)));
@@ -123,15 +123,15 @@ class Endpoint : public EndpointBase {
     }
     {
       doca_check(doca_comch_consumer_create(conn, bulk_buffers.mmap(), &con));
-      doca_check(doca_comch_consumer_task_post_recv_set_conf(con, consumer_post_recv_task_comp_cb,
-                                                             consumer_post_recv_task_err_cb, buffers.size()));
+      doca_check(doca_comch_consumer_task_post_recv_set_conf(
+          con, consumer_post_recv_task_comp_cb, consumer_post_recv_task_err_cb, bulk_buffers.n_elements()));
       auto ctx = doca_comch_consumer_as_ctx(con);
       doca_check(doca_ctx_set_state_changed_cb(ctx, consumer_state_change_cb));
       doca_check(doca_ctx_set_user_data(ctx, doca_data(this)));
       doca_check(doca_pe_connect_ctx(pe, ctx));
       doca_check_ext(doca_ctx_start(ctx), DOCA_ERROR_IN_PROGRESS);
     }
-    doca_check(doca_comch_connection_set_user_data(conn, doca_data(this)));
+    // doca_check(doca_comch_connection_set_user_data(conn, doca_data(this)));
     EndpointBase::prepare();
   }
 
