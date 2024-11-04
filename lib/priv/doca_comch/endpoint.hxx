@@ -144,15 +144,7 @@ class Endpoint : public EndpointBase {
   }
 
   void stop() {
-    if constexpr (side == Side::ServerSide) {
-      doca_check(doca_ctx_stop(doca_comch_producer_as_ctx(pro)));
-      doca_check(doca_ctx_stop(doca_comch_consumer_as_ctx(con)));
-    } else if constexpr (side == Side::ClientSide) {
-      doca_check(doca_ctx_stop(doca_comch_producer_as_ctx(pro)));
-      doca_check(doca_ctx_stop(doca_comch_consumer_as_ctx(con)));
-    } else {
-      static_unreachable;
-    }
+    doca_check(doca_ctx_stop(doca_comch_consumer_as_ctx(con)));
     EndpointBase::stop();
   }
 
@@ -298,6 +290,20 @@ class Endpoint : public EndpointBase {
                                        doca_ctx_states next_state) {
     auto e = reinterpret_cast<Endpoint *>(ctx_user_data.ptr);
     TRACE("DOCA Comch {} {} producer state change: {} -> {}", e->name, side, prev_state, next_state);
+    switch (next_state) {
+      case DOCA_CTX_STATE_IDLE: {
+        if constexpr (side == Side::ClientSide) {
+          doca_check_ext(doca_ctx_stop(doca_comch_client_as_ctx(e->c)), DOCA_ERROR_IN_PROGRESS)
+        }
+      } break;
+      case DOCA_CTX_STATE_STARTING: {
+      } break;
+      case DOCA_CTX_STATE_RUNNING: {
+        e->run();
+      } break;
+      case DOCA_CTX_STATE_STOPPING: {
+      } break;
+    }
   }
 
   static void consumer_state_change_cb(const doca_data ctx_user_data, doca_ctx *, doca_ctx_states prev_state,
@@ -306,9 +312,7 @@ class Endpoint : public EndpointBase {
     TRACE("DOCA Comch {} {} consumer state change: {} -> {}", e->name, side, prev_state, next_state);
     switch (next_state) {
       case DOCA_CTX_STATE_IDLE: {
-        if constexpr (side == Side::ClientSide) {
-          doca_check_ext(doca_ctx_stop(doca_comch_client_as_ctx(e->c)), DOCA_ERROR_IN_PROGRESS)
-        }
+        doca_check(doca_ctx_stop(doca_comch_producer_as_ctx(e->pro)));
       } break;
       case DOCA_CTX_STATE_STARTING: {
       } break;
