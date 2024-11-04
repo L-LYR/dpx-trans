@@ -75,12 +75,6 @@ class Endpoint : public EndpointBase {
   }
 
   ~Endpoint() {
-    if (con != nullptr) {
-      doca_check(doca_comch_consumer_destroy(con));
-    }
-    if (pro != nullptr) {
-      doca_check(doca_comch_producer_destroy(pro));
-    }
     if constexpr (side == Side::ServerSide) {
       if (s != nullptr) {
         doca_check(doca_comch_server_destroy(s));
@@ -191,6 +185,8 @@ class Endpoint : public EndpointBase {
     auto e = reinterpret_cast<Endpoint *>(get_user_data_from_connection(conn));
     if (e->conn == conn) {
       e->conn = nullptr;
+      doca_check(doca_comch_producer_destroy(e->pro));
+      doca_check(doca_comch_consumer_destroy(e->con));
       doca_check_ext(doca_ctx_stop(doca_comch_server_as_ctx(e->s)), DOCA_ERROR_IN_PROGRESS);
       for (OpContext &op_ctx : e->recv_ops_q) {
         op_ctx.op_res.set_value(0);
@@ -218,6 +214,12 @@ class Endpoint : public EndpointBase {
       e->remote_consumer_id = -1;
       if constexpr (side == Side::ServerSide) {
         e->stop();
+      } else if constexpr (side == Side::ClientSide) {
+        doca_check(doca_comch_producer_destroy(e->pro));
+        doca_check(doca_comch_consumer_destroy(e->con));
+        doca_check_ext(doca_ctx_stop(doca_comch_client_as_ctx(e->c)), DOCA_ERROR_IN_PROGRESS)
+      } else {
+        static_unreachable;
       }
     } else {
       WARN("Only support one connection, ignore");
@@ -290,19 +292,6 @@ class Endpoint : public EndpointBase {
                                        doca_ctx_states next_state) {
     auto e = reinterpret_cast<Endpoint *>(ctx_user_data.ptr);
     TRACE("DOCA Comch {} {} producer state change: {} -> {}", e->name, side, prev_state, next_state);
-    switch (next_state) {
-      case DOCA_CTX_STATE_IDLE: {
-        if constexpr (side == Side::ClientSide) {
-          doca_check_ext(doca_ctx_stop(doca_comch_client_as_ctx(e->c)), DOCA_ERROR_IN_PROGRESS)
-        }
-      } break;
-      case DOCA_CTX_STATE_STARTING: {
-      } break;
-      case DOCA_CTX_STATE_RUNNING: {
-      } break;
-      case DOCA_CTX_STATE_STOPPING: {
-      } break;
-    }
   }
 
   static void consumer_state_change_cb(const doca_data ctx_user_data, doca_ctx *, doca_ctx_states prev_state,
