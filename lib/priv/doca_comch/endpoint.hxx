@@ -298,7 +298,8 @@ class Endpoint : public EndpointBase {
     // auto endpoint = reinterpret_cast<Endpoint *>(ctx_user_data.ptr);
     auto ctx = reinterpret_cast<OpContext *>(task_user_data.ptr);
     if constexpr (type == CompCbType::OK) {
-      ctx->op_res.set_value(ctx->len);
+      size_t len = *reinterpret_cast<const size_t *>(doca_comch_consumer_task_post_recv_get_imm_data(task));
+      ctx->op_res.set_value(len);
     } else if constexpr (type == CompCbType::ERROR) {
       ctx->op_res.set_value(0);
     } else {
