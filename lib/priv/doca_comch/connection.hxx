@@ -65,7 +65,7 @@ class ConnectionHandle {
   void progress_all_until(Predictor&& p) {
     while (true) {
       uint32_t n_satisfied = 0;
-      for_each_endpoint([&n_satisfied, p = std::move(p)](Endpoint& e) {
+      for_each_endpoint([&n_satisfied, &p](Endpoint& e) {
         if (!p(e)) {
           e.progress();
         } else {
