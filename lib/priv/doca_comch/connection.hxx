@@ -58,7 +58,10 @@ class ConnectionHandle {
   }
 
  private:
-  void for_each_endpoint(Predictor&& p) { std::ranges::for_each(pending_endpoints, p); }
+  template <typename Fn>
+  void for_each_endpoint(Fn&& fn) {
+    std::ranges::for_each(pending_endpoints, fn);
+  }
   void progress_all_until(Predictor&& p) {
     while (true) {
       uint32_t n_satisfied = 0;

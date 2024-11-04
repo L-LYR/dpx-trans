@@ -21,7 +21,7 @@ class Endpoint : public EndpointBase {
   friend class ConnectionHandle;
 
  public:
-  Endpoint(Device &dev_, naive::Buffers &buffers_, doca::Buffers &bulk_buffers_, std::string_view name_)
+  Endpoint(Device &dev_, doca::Buffers &buffers_, doca::Buffers &bulk_buffers_, std::string_view name_)
       : dev(dev_), buffers(buffers_), bulk_buffers(bulk_buffers_), name(name_) {
     uint32_t dev_max_msg_size = 0;
     uint32_t dev_recv_queue_size = 0;
@@ -92,11 +92,30 @@ class Endpoint : public EndpointBase {
   bool progress() { return doca_pe_progress(cp_pe); }
 
   op_res_future_t post_recv(OpContext &ctx) {
-    recv_ops_q.emplace_back(ctx);
+    doca_comch_consumer_task_post_recv *task = nullptr;
+    auto &buf = static_cast<doca::BorrowedBuffer &>(ctx.buf);
+    doca_check(doca_comch_consumer_task_post_recv_alloc_init(con, buf.buf, &task));
+    doca_task_set_user_data(doca_comch_consumer_task_post_recv_as_task(task), doca_data(&ctx));
+    doca_check(doca_task_submit(doca_comch_consumer_task_post_recv_as_task(task)));
     return ctx.op_res.get_future();
   }
 
   op_res_future_t post_send(OpContext &ctx) {
+    doca_comch_producer_task_send *task = nullptr;
+    auto &buf = static_cast<doca::BorrowedBuffer &>(ctx.buf);
+    doca_check(doca_comch_producer_task_send_alloc_init(pro, buf.buf, reinterpret_cast<uint8_t *>(&ctx.len),
+                                                        sizeof(ctx.len), remote_consumer_id, &task));
+    doca_task_set_user_data(doca_comch_producer_task_send_as_task(task), doca_data(&ctx));
+    doca_check(doca_task_submit(doca_comch_producer_task_send_as_task(task)));
+    return ctx.op_res.get_future();
+  }
+
+  op_res_future_t cp_post_recv(OpContext &ctx) {
+    recv_ops_q.emplace_back(ctx);
+    return ctx.op_res.get_future();
+  }
+
+  op_res_future_t cp_post_send(OpContext &ctx) {
     doca_comch_task_send *task = nullptr;
     if constexpr (side == Side::ServerSide) {
       doca_check(doca_comch_server_task_send_alloc_init(s, conn, ctx.buf.data(), ctx.len, &task));
@@ -116,7 +135,7 @@ class Endpoint : public EndpointBase {
     {
       doca_check(doca_comch_consumer_create(conn, bulk_buffers.mmap(), &con));
       doca_check(doca_comch_consumer_task_post_recv_set_conf(
-          con, consumer_post_recv_task_comp_cb, consumer_post_recv_task_err_cb, bulk_buffers.n_elements()));
+          con, post_recv_cb<CompCbType::OK>, post_recv_cb<CompCbType::ERROR>, bulk_buffers.n_elements()));
       auto ctx = doca_comch_consumer_as_ctx(con);
       doca_check(doca_pe_connect_ctx(cp_pe, ctx));
       doca_check(doca_ctx_set_state_changed_cb(ctx, consumer_state_change_cb));
@@ -125,8 +144,8 @@ class Endpoint : public EndpointBase {
     }
     {
       doca_check(doca_comch_producer_create(conn, &pro));
-      doca_check(doca_comch_producer_task_send_set_conf(pro, producer_send_task_comp_cb, producer_send_task_err_cb,
-                                                        bulk_buffers.n_elements()));
+      doca_check(doca_comch_producer_task_send_set_conf(pro, post_send_cb<CompCbType::OK>,
+                                                        post_send_cb<CompCbType::ERROR>, bulk_buffers.n_elements()));
       auto ctx = doca_comch_producer_as_ctx(pro);
       doca_check(doca_pe_connect_ctx(cp_pe, ctx));
       doca_check(doca_ctx_set_state_changed_cb(ctx, producer_state_change_cb));
@@ -199,7 +218,7 @@ class Endpoint : public EndpointBase {
   static void new_consumer_event_cb(doca_comch_event_consumer *, doca_comch_connection *conn,
                                     uint32_t remote_consumer_id) {
     auto e = reinterpret_cast<Endpoint *>(get_user_data_from_connection(conn));
-    if (e->remote_consumer_id == -1) {
+    if (e->remote_consumer_id == 0) {
       e->remote_consumer_id = remote_consumer_id;
     } else {
       WARN("Only support one connection, ignore");
@@ -210,7 +229,7 @@ class Endpoint : public EndpointBase {
                                         uint32_t remote_consumer_id) {
     auto e = reinterpret_cast<Endpoint *>(get_user_data_from_connection(conn));
     if (remote_consumer_id == e->remote_consumer_id) {
-      e->remote_consumer_id = -1;
+      e->remote_consumer_id = 0;
       if constexpr (side == Side::ServerSide) {
         e->stop();
       } else if constexpr (side == Side::ClientSide) {
@@ -253,35 +272,38 @@ class Endpoint : public EndpointBase {
     e->recv_ops_q.pop_front();
   }
 
-  static void producer_send_task_comp_cb(struct doca_comch_producer_task_send *task, union doca_data,
-                                         union doca_data ctx_user_data) {
-    [[maybe_unused]] auto endpoint = reinterpret_cast<Endpoint *>(ctx_user_data.ptr);
-    [[maybe_unused]] auto buf = doca_comch_producer_task_send_get_buf(task);
-    INFO("Producer send task done!");
+  enum class CompCbType {
+    OK,
+    ERROR,
+  };
+
+  template <CompCbType type>
+  static void post_send_cb(struct doca_comch_producer_task_send *task, union doca_data task_user_data,
+                           union doca_data /*ctx_user_data*/) {
+    // auto endpoint = reinterpret_cast<Endpoint *>(ctx_user_data.ptr);
+    auto ctx = reinterpret_cast<OpContext *>(task_user_data.ptr);
+    if constexpr (type == CompCbType::OK) {
+      ctx->op_res.set_value(ctx->len);
+    } else if constexpr (type == CompCbType::ERROR) {
+      ctx->op_res.set_value(0);
+    } else {
+      static_unreachable;
+    }
     doca_task_free(doca_comch_producer_task_send_as_task(task));
   }
 
-  static void producer_send_task_err_cb(struct doca_comch_producer_task_send *task, union doca_data,
-                                        union doca_data ctx_user_data) {
-    [[maybe_unused]] auto endpoint = reinterpret_cast<Endpoint *>(ctx_user_data.ptr);
-    [[maybe_unused]] auto buf = doca_comch_producer_task_send_get_buf(task);
-    ERROR("Producer send task failed!");
-    doca_task_free(doca_comch_producer_task_send_as_task(task));
-  }
-
-  static void consumer_post_recv_task_comp_cb(struct doca_comch_consumer_task_post_recv *task, union doca_data,
-                                              union doca_data ctx_user_data) {
-    [[maybe_unused]] auto endpoint = reinterpret_cast<Endpoint *>(ctx_user_data.ptr);
-    [[maybe_unused]] auto buf = doca_comch_consumer_task_post_recv_get_buf(task);
-    INFO("Consumer post recv task done!");
-    doca_task_free(doca_comch_consumer_task_post_recv_as_task(task));
-  }
-
-  static void consumer_post_recv_task_err_cb(struct doca_comch_consumer_task_post_recv *task, union doca_data,
-                                             union doca_data ctx_user_data) {
-    [[maybe_unused]] auto endpoint = reinterpret_cast<Endpoint *>(ctx_user_data.ptr);
-    [[maybe_unused]] auto buf = doca_comch_consumer_task_post_recv_get_buf(task);
-    ERROR("Consumer post recv task failed!");
+  template <CompCbType type>
+  static void post_recv_cb(struct doca_comch_consumer_task_post_recv *task, union doca_data task_user_data,
+                           union doca_data /*ctx_user_data*/) {
+    // auto endpoint = reinterpret_cast<Endpoint *>(ctx_user_data.ptr);
+    auto ctx = reinterpret_cast<OpContext *>(task_user_data.ptr);
+    if constexpr (type == CompCbType::OK) {
+      ctx->op_res.set_value(ctx->len);
+    } else if constexpr (type == CompCbType::ERROR) {
+      ctx->op_res.set_value(0);
+    } else {
+      static_unreachable;
+    }
     doca_task_free(doca_comch_consumer_task_post_recv_as_task(task));
   }
 
@@ -336,7 +358,7 @@ class Endpoint : public EndpointBase {
 
  private:
   Device &dev;
-  naive::Buffers &buffers;
+  doca::Buffers &buffers;
   doca::Buffers &bulk_buffers;
   std::string name;
   doca_pe *cp_pe = nullptr;
@@ -347,7 +369,7 @@ class Endpoint : public EndpointBase {
   doca_comch_connection *conn = nullptr;
   doca_comch_consumer *con = nullptr;
   doca_comch_producer *pro = nullptr;
-  uint32_t remote_consumer_id = -1;
+  uint32_t remote_consumer_id = 0;
   std::list<std::reference_wrapper<OpContext>> recv_ops_q;
 };
 

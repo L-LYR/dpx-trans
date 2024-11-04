@@ -45,8 +45,8 @@ class Transport {
                                                  void>>>;
 
   using ConnectionParam = ConnectionParam<b>;
-  using CtrlPathBuffers = naive::Buffers;
-  using DataPathBuffers = std::conditional_t<b == Backend::DOCA_Comch, doca::Buffers, CtrlPathBuffers>;
+  using CtrlPathBuffers= std::conditional_t<b == Backend::DOCA_Comch, doca::Buffers, naive::Buffers>;
+  using DataPathBuffers = std::conditional_t<b == Backend::DOCA_Comch, doca::Buffers, naive::Buffers>;
   // clang-format on
 
   template <Backend, Side, Rpc...>
@@ -67,7 +67,7 @@ class Transport {
     requires(b == Backend::DOCA_Comch)
       : config(config_),
         cp_conn_handle(config.conn_param),
-        cp_buffers(config.queue_depth, config.max_rpc_msg_size),
+        cp_buffers(dev, config.queue_depth, config.max_rpc_msg_size),
         dp_buffers(dev, config.queue_depth, config.max_rpc_msg_size),
         cp_e(dev, cp_buffers, dp_buffers, config.conn_param.name) {
     establish_connections();
@@ -270,7 +270,13 @@ class Transport {
     }
   }
 
-  void release_buffer(BorrowedBuffer &&buf) { cp_buffers.release_one(std::move(buf)); }
+  void release_buffer(BorrowedBuffer &&buf) {
+    if constexpr (std::is_same_v<CtrlPathBuffers, doca::Buffers>) {
+      cp_buffers.release_one(std::move(static_cast<doca::BorrowedBuffer &>(buf)));
+    } else {
+      cp_buffers.release_one(std::move(buf));
+    }
+  }
 
   void progress_until(std::function<bool()> &&predictor) {
     while (!(outstanding_rpcs.empty() && active_workers == 0 && predictor())) {

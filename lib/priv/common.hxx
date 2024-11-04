@@ -23,6 +23,7 @@ using op_res_future_t = boost::fibers::future<int>;
 struct OpContext : public ContextBase {
   Op op;
   BorrowedBuffer buf;
+
   size_t len = -1;
   op_res_promise_t op_res = {};
 

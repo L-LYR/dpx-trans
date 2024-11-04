@@ -36,7 +36,17 @@ namespace doca {
  *
  */
 
+namespace comch {
+
+template <Side s>
+class Endpoint;
+
+}
+
 class BorrowedBuffer : public ::BorrowedBuffer {
+  template <Side s>
+  friend class comch::Endpoint;
+
  public:
   BorrowedBuffer(doca_buf* buf_) : buf(buf_) {
     doca_check(doca_buf_get_data(buf, reinterpret_cast<void**>(&base)));
@@ -59,13 +69,6 @@ class BorrowedBuffer : public ::BorrowedBuffer {
  private:
   doca_buf* buf = nullptr;
 };
-
-namespace comch {
-
-template <Side s>
-class Endpoint;
-
-}
 
 class Buffers : public OwnedBuffer {
   template <Side s>
