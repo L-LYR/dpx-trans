@@ -82,10 +82,14 @@ class Buffers : public OwnedBuffer {
     doca_check(doca_buf_pool_start(p));
   }
   ~Buffers() {
-    doca_check(doca_buf_pool_stop(p));
-    doca_check(doca_buf_pool_destroy(p));
-    doca_check(doca_mmap_stop(m));
-    doca_check(doca_mmap_destroy(m));
+    if (p != nullptr) {
+      doca_check(doca_buf_pool_stop(p));
+      doca_check(doca_buf_pool_destroy(p));
+    }
+    if (m != nullptr) {
+      doca_check(doca_mmap_stop(m));
+      doca_check(doca_mmap_destroy(m));
+    }
   }
 
   Buffers(Buffers&& other) : OwnedBuffer(std::move(other)) {

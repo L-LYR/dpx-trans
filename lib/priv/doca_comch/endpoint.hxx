@@ -27,14 +27,16 @@ class Endpoint : public EndpointBase {
     uint32_t dev_recv_queue_size = 0;
     doca_check(doca_comch_cap_get_max_msg_size(doca_dev_as_devinfo(dev.dev), &dev_max_msg_size));
     doca_check(doca_comch_cap_get_max_recv_queue_size(doca_dev_as_devinfo(dev.dev), &dev_recv_queue_size));
+    INFO("{} {}", dev_recv_queue_size, dev_max_msg_size);
     if (dev_max_msg_size < buffers.piece_size()) {
       die("Device max rpc message size: {}", dev_max_msg_size);
     }
     if (dev_recv_queue_size < buffers.n_elements()) {
       die("Device max recv queue depth: {}", dev_recv_queue_size);
     }
-    dev_recv_queue_size = std::min(static_cast<uint32_t>(buffers.piece_size()), dev_recv_queue_size);
-    dev_max_msg_size = std::min(static_cast<uint32_t>(buffers.n_elements()), dev_max_msg_size);
+    dev_recv_queue_size = std::min(static_cast<uint32_t>(buffers.n_elements()), dev_recv_queue_size);
+    dev_max_msg_size = std::min(static_cast<uint32_t>(buffers.piece_size()), dev_max_msg_size);
+    INFO("{} {}", dev_recv_queue_size, dev_max_msg_size);
 
     doca_check(doca_pe_create(&cp_pe));
     if constexpr (side == Side::ServerSide) {
