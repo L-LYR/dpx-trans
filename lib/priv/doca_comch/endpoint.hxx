@@ -27,7 +27,6 @@ class Endpoint : public EndpointBase {
     uint32_t dev_recv_queue_size = 0;
     doca_check(doca_comch_cap_get_max_msg_size(doca_dev_as_devinfo(dev.dev), &dev_max_msg_size));
     doca_check(doca_comch_cap_get_max_recv_queue_size(doca_dev_as_devinfo(dev.dev), &dev_recv_queue_size));
-    INFO("{} {}", dev_recv_queue_size, dev_max_msg_size);
     if (dev_max_msg_size < buffers.piece_size()) {
       die("Device max rpc message size: {}", dev_max_msg_size);
     }
@@ -36,7 +35,7 @@ class Endpoint : public EndpointBase {
     }
     dev_recv_queue_size = std::min(static_cast<uint32_t>(buffers.n_elements()), dev_recv_queue_size);
     dev_max_msg_size = std::min(static_cast<uint32_t>(buffers.piece_size()), dev_max_msg_size);
-    INFO("{} {}", dev_recv_queue_size, dev_max_msg_size);
+    TRACE("queue depth {}, msg size {}", dev_recv_queue_size, dev_max_msg_size);
 
     doca_check(doca_pe_create(&cp_pe));
     if constexpr (side == Side::ServerSide) {
@@ -146,9 +145,11 @@ class Endpoint : public EndpointBase {
 
   void stop() {
     if constexpr (side == Side::ServerSide) {
-      doca_check_ext(doca_ctx_stop(doca_comch_server_as_ctx(s)), DOCA_ERROR_IN_PROGRESS);
+      doca_check(doca_ctx_stop(doca_comch_producer_as_ctx(pro)));
+      doca_check(doca_ctx_stop(doca_comch_consumer_as_ctx(con)));
     } else if constexpr (side == Side::ClientSide) {
-      doca_check_ext(doca_ctx_stop(doca_comch_client_as_ctx(c)), DOCA_ERROR_IN_PROGRESS);
+      doca_check(doca_ctx_stop(doca_comch_producer_as_ctx(pro)));
+      doca_check(doca_ctx_stop(doca_comch_consumer_as_ctx(con)));
     } else {
       static_unreachable;
     }
@@ -198,7 +199,7 @@ class Endpoint : public EndpointBase {
     auto e = reinterpret_cast<Endpoint *>(get_user_data_from_connection(conn));
     if (e->conn == conn) {
       e->conn = nullptr;
-      e->stop();
+      doca_check_ext(doca_ctx_stop(doca_comch_server_as_ctx(e->s)), DOCA_ERROR_IN_PROGRESS);
       for (OpContext &op_ctx : e->recv_ops_q) {
         op_ctx.op_res.set_value(0);
       }  // notify all workers
@@ -211,7 +212,7 @@ class Endpoint : public EndpointBase {
   static void new_consumer_event_cb(doca_comch_event_consumer *, doca_comch_connection *conn,
                                     uint32_t remote_consumer_id) {
     auto e = reinterpret_cast<Endpoint *>(get_user_data_from_connection(conn));
-    if (e->remote_consumer_id == 0) {
+    if (e->remote_consumer_id == -1) {
       e->remote_consumer_id = remote_consumer_id;
     } else {
       WARN("Only support one connection, ignore");
@@ -222,7 +223,10 @@ class Endpoint : public EndpointBase {
                                         uint32_t remote_consumer_id) {
     auto e = reinterpret_cast<Endpoint *>(get_user_data_from_connection(conn));
     if (remote_consumer_id == e->remote_consumer_id) {
-      e->remote_consumer_id = 0;
+      e->remote_consumer_id = -1;
+      if constexpr (side == Side::ServerSide) {
+        e->stop();
+      }
     } else {
       WARN("Only support one connection, ignore");
     }
@@ -302,7 +306,9 @@ class Endpoint : public EndpointBase {
     TRACE("DOCA Comch {} {} consumer state change: {} -> {}", e->name, side, prev_state, next_state);
     switch (next_state) {
       case DOCA_CTX_STATE_IDLE: {
-        e->stop();
+        if constexpr (side == Side::ClientSide) {
+          doca_check_ext(doca_ctx_stop(doca_comch_client_as_ctx(e->c)), DOCA_ERROR_IN_PROGRESS)
+        }
       } break;
       case DOCA_CTX_STATE_STARTING: {
       } break;

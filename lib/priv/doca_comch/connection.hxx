@@ -52,10 +52,7 @@ class ConnectionHandle {
   }
 
   void disconnect() {
-    std::ranges::for_each(pending_endpoints, [](Endpoint& e) {
-      e.stop();
-      e.conn = nullptr;
-    });
+    std::ranges::for_each(pending_endpoints, [](Endpoint& e) { e.stop(); });
     progress_all_until([](Endpoint& e) { return e.exited(); });
   }
 
