@@ -36,7 +36,7 @@ class Endpoint : public EndpointBase {
     dev_recv_queue_size = std::min(static_cast<uint32_t>(buffers.piece_size()), dev_recv_queue_size);
     dev_max_msg_size = std::min(static_cast<uint32_t>(buffers.n_elements()), dev_max_msg_size);
 
-    doca_check(doca_pe_create(&pe));
+    doca_check(doca_pe_create(&cp_pe));
     if constexpr (side == Side::ServerSide) {
       doca_check(doca_comch_server_create(dev.dev, dev.rep, name.data(), &s));
     } else if constexpr (side == Side::ClientSide) {
@@ -47,25 +47,25 @@ class Endpoint : public EndpointBase {
 
     if constexpr (side == Side::ServerSide) {
       auto ctx = doca_comch_server_as_ctx(s);
-      doca_check(doca_ctx_set_state_changed_cb(ctx, state_change_cb));
       doca_check(doca_comch_server_task_send_set_conf(s, task_completion_cb, task_error_cb, dev_recv_queue_size));
       doca_check(doca_comch_server_event_msg_recv_register(s, recv_event_cb));
       doca_check(doca_comch_server_event_connection_status_changed_register(s, connect_event_cb, disconnect_event_cb));
       doca_check(doca_comch_server_event_consumer_register(s, new_consumer_event_cb, expired_consumer_event_cb));
       doca_check(doca_comch_server_set_max_msg_size(s, dev_max_msg_size));
       doca_check(doca_comch_server_set_recv_queue_size(s, dev_recv_queue_size));
-      doca_check(doca_pe_connect_ctx(pe, ctx));
+      doca_check(doca_pe_connect_ctx(cp_pe, ctx));
+      doca_check(doca_ctx_set_state_changed_cb(ctx, state_change_cb));
       doca_check(doca_ctx_set_user_data(ctx, doca_data(this)));
       doca_check(doca_ctx_start(ctx));
     } else if constexpr (side == Side::ClientSide) {
       auto ctx = doca_comch_client_as_ctx(c);
-      doca_check(doca_ctx_set_state_changed_cb(ctx, state_change_cb));
       doca_check(doca_comch_client_task_send_set_conf(c, task_completion_cb, task_error_cb, dev_recv_queue_size));
       doca_check(doca_comch_client_event_msg_recv_register(c, recv_event_cb));
       doca_check(doca_comch_client_event_consumer_register(c, new_consumer_event_cb, expired_consumer_event_cb));
       doca_check(doca_comch_client_set_max_msg_size(c, dev_max_msg_size));
       doca_check(doca_comch_client_set_recv_queue_size(c, dev_recv_queue_size));
-      doca_check(doca_pe_connect_ctx(pe, ctx));
+      doca_check(doca_pe_connect_ctx(cp_pe, ctx));
+      doca_check(doca_ctx_set_state_changed_cb(ctx, state_change_cb));
       doca_check(doca_ctx_set_user_data(ctx, doca_data(this)));
       doca_check_ext(doca_ctx_start(ctx), DOCA_ERROR_IN_PROGRESS);
     } else {
@@ -74,6 +74,12 @@ class Endpoint : public EndpointBase {
   }
 
   ~Endpoint() {
+    if (con != nullptr) {
+      doca_check(doca_comch_consumer_destroy(con));
+    }
+    if (pro != nullptr) {
+      doca_check(doca_comch_producer_destroy(pro));
+    }
     if constexpr (side == Side::ServerSide) {
       if (s != nullptr) {
         doca_check(doca_comch_server_destroy(s));
@@ -83,12 +89,15 @@ class Endpoint : public EndpointBase {
         doca_check(doca_comch_client_destroy(c));
       }
     }
-    if (pe != nullptr) {
-      doca_check(doca_pe_destroy(pe));
+    if (dp_pe != nullptr) {
+      doca_check(doca_pe_destroy(dp_pe));
+    }
+    if (cp_pe != nullptr) {
+      doca_check(doca_pe_destroy(cp_pe));
     }
   }
 
-  bool progress() { return doca_pe_progress(pe); }
+  bool progress() { return doca_pe_progress(cp_pe); }
 
   op_res_future_t post_recv(OpContext &ctx) {
     recv_ops_q.emplace_back(ctx);
@@ -111,14 +120,16 @@ class Endpoint : public EndpointBase {
 
  protected:
   void prepare() {
+    assert(conn != nullptr);
+    doca_check(doca_pe_create(&dp_pe));
     {
       doca_check(doca_comch_producer_create(conn, &pro));
       doca_check(doca_comch_producer_task_send_set_conf(pro, producer_send_task_comp_cb, producer_send_task_err_cb,
                                                         bulk_buffers.n_elements()));
       auto ctx = doca_comch_producer_as_ctx(pro);
+      doca_check(doca_pe_connect_ctx(dp_pe, ctx));
       doca_check(doca_ctx_set_state_changed_cb(ctx, producer_state_change_cb));
       doca_check(doca_ctx_set_user_data(ctx, doca_data(this)));
-      doca_check(doca_pe_connect_ctx(pe, ctx));
       doca_check(doca_ctx_start(ctx));
     }
     {
@@ -126,9 +137,9 @@ class Endpoint : public EndpointBase {
       doca_check(doca_comch_consumer_task_post_recv_set_conf(
           con, consumer_post_recv_task_comp_cb, consumer_post_recv_task_err_cb, bulk_buffers.n_elements()));
       auto ctx = doca_comch_consumer_as_ctx(con);
+      doca_check(doca_pe_connect_ctx(dp_pe, ctx));
       doca_check(doca_ctx_set_state_changed_cb(ctx, consumer_state_change_cb));
       doca_check(doca_ctx_set_user_data(ctx, doca_data(this)));
-      doca_check(doca_pe_connect_ctx(pe, ctx));
       doca_check_ext(doca_ctx_start(ctx), DOCA_ERROR_IN_PROGRESS);
     }
     // doca_check(doca_comch_connection_set_user_data(conn, doca_data(this)));
@@ -307,12 +318,12 @@ class Endpoint : public EndpointBase {
     }
   }
 
-  static void *get_user_data_from_connection(doca_comch_connection *c) {
+  static void *get_user_data_from_connection(doca_comch_connection *conn) {
     doca_data user_data(nullptr);
     if constexpr (side == Side::ServerSide) {
-      doca_check(doca_ctx_get_user_data(doca_comch_server_as_ctx(doca_comch_server_get_server_ctx(c)), &user_data));
+      doca_check(doca_ctx_get_user_data(doca_comch_server_as_ctx(doca_comch_server_get_server_ctx(conn)), &user_data));
     } else if constexpr (side == Side::ClientSide) {
-      doca_check(doca_ctx_get_user_data(doca_comch_client_as_ctx(doca_comch_client_get_client_ctx(c)), &user_data));
+      doca_check(doca_ctx_get_user_data(doca_comch_client_as_ctx(doca_comch_client_get_client_ctx(conn)), &user_data));
     } else {
       static_unreachable;
     }
@@ -324,12 +335,13 @@ class Endpoint : public EndpointBase {
   naive::Buffers &buffers;
   doca::Buffers &bulk_buffers;
   std::string name;
-  doca_pe *pe = nullptr;
+  doca_pe *cp_pe = nullptr;
   union {
     doca_comch_server *s = nullptr;
     doca_comch_client *c;
   };
   doca_comch_connection *conn = nullptr;
+  doca_pe *dp_pe = nullptr;
   doca_comch_consumer *con = nullptr;
   doca_comch_producer *pro = nullptr;
   uint32_t remote_consumer_id = -1;
