@@ -81,7 +81,7 @@ op_res_future_t Endpoint::post_send(OpContext& ctx) {
   return ctx.op_res.get_future();
 }
 
-Endpoint::Endpoint(naive::Buffers& buffers_) : buffers(buffers_) { EndpointBase::prepare(); }
+Endpoint::Endpoint(naive::Buffers& buffers_) : buffers(buffers_) {}
 
 Endpoint::~Endpoint() {
   if (qp != nullptr) {
@@ -111,7 +111,7 @@ Endpoint::~Endpoint() {
   }
 }
 
-void Endpoint::setup_resources() {
+void Endpoint::prepare() {
   assert(id != nullptr);
   uint32_t n_wr = buffers.size();
   if (pd = ibv_alloc_pd(id->verbs); pd == nullptr) {
@@ -159,6 +159,7 @@ void Endpoint::setup_resources() {
   local.rnr_retry_count = 7;
   local.private_data = &local_mr_h;
   local.private_data_len = sizeof(local_mr_h);
+  EndpointBase::prepare();
 }
 
 void Endpoint::setup_remote_param(const rdma_conn_param& remote_) {

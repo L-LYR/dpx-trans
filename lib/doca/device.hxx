@@ -10,7 +10,7 @@
 
 namespace doca {
 
-namespace comch::ctrl_path {
+namespace comch {
 
 template <Side s>
 class Endpoint;
@@ -19,7 +19,7 @@ class Endpoint;
 
 class Device : Noncopyable, Nonmovable {
   template <Side s>
-  friend class comch::ctrl_path::Endpoint;
+  friend class comch::Endpoint;
   friend class Buffers;
 
  public:

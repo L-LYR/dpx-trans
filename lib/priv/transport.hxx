@@ -35,23 +35,15 @@ class Transport {
   using CtrlPathEndpoint =
     std::conditional_t<b == Backend::TCP,        tcp::Endpoint,
     std::conditional_t<b == Backend::Verbs,      verbs::Endpoint,
-    std::conditional_t<b == Backend::DOCA_Comch, doca::comch::ctrl_path::Endpoint<s>,
+    std::conditional_t<b == Backend::DOCA_Comch, doca::comch::Endpoint<s>,
                                                  void>>>;
-  using DataPathEndpoint =
-    std::conditional_t<b == Backend::TCP,        tcp::Endpoint,
-    std::conditional_t<b == Backend::Verbs,      verbs::Endpoint,
-    std::conditional_t<b == Backend::DOCA_Comch, doca::comch::data_path::Endpoint<s>,
-                                                 void>>>;
+
   using CtrlPathConnHandle =
     std::conditional_t<b == Backend::TCP,        tcp::ConnectionHandle,
     std::conditional_t<b == Backend::Verbs,      verbs::ConnectionHandle,
-    std::conditional_t<b == Backend::DOCA_Comch, doca::comch::ctrl_path::ConnectionHandle<s>,
+    std::conditional_t<b == Backend::DOCA_Comch, doca::comch::ConnectionHandle<s>,
                                                  void>>>;
-  using DataPathConnHandle =
-    std::conditional_t<b == Backend::TCP,        tcp::ConnectionHandle,
-    std::conditional_t<b == Backend::Verbs,      verbs::ConnectionHandle,
-    std::conditional_t<b == Backend::DOCA_Comch, doca::comch::data_path::ConnectionHandle<s>,
-                                                 void>>>;
+
   using ConnectionParam = ConnectionParam<b>;
   using CtrlPathBuffers = naive::Buffers;
   using DataPathBuffers = std::conditional_t<b == Backend::DOCA_Comch, doca::Buffers, CtrlPathBuffers>;
@@ -66,10 +58,8 @@ class Transport {
       : config(config_),
         cp_conn_handle(config.conn_param),
         cp_buffers(config.queue_depth, config.max_rpc_msg_size),
-        cp_e(cp_buffers),
-        dp_conn_handle(config.conn_param),
         dp_buffers(config.queue_depth, config.max_rpc_msg_size),
-        dp_e(dp_buffers) {
+        cp_e(cp_buffers) {
     establish_connections();
   }
 
@@ -78,10 +68,8 @@ class Transport {
       : config(config_),
         cp_conn_handle(config.conn_param),
         cp_buffers(config.queue_depth, config.max_rpc_msg_size),
-        cp_e(dev, cp_buffers, config.conn_param.name),
-        dp_conn_handle(config.conn_param),
         dp_buffers(dev, config.queue_depth, config.max_rpc_msg_size),
-        dp_e(cp_e, dp_buffers) {
+        cp_e(dev, cp_buffers, dp_buffers, config.conn_param.name) {
     establish_connections();
   }
 
@@ -168,6 +156,7 @@ class Transport {
       cp_conn_handle.disconnect();
     }
   }
+
   void establish_connections() {
     cp_conn_handle.associate(cp_e);
     if constexpr (s == Side::ServerSide) {
@@ -177,12 +166,6 @@ class Transport {
       }
     } else {
       cp_conn_handle.connect();
-    }
-    dp_conn_handle.associate(dp_e);
-    if constexpr (s == Side::ServerSide) {
-      dp_conn_handle.listen_and_accept();
-    } else {
-      dp_conn_handle.connect();
     }
   }
 
@@ -301,13 +284,10 @@ class Transport {
   int64_t seq = 1;
   CtrlPathConnHandle cp_conn_handle;
   CtrlPathBuffers cp_buffers;
+  DataPathBuffers dp_buffers;
   CtrlPathEndpoint cp_e;
   std::unordered_map<int64_t, ContextBase *> outstanding_rpcs;
   uint32_t active_workers = 0;
-
-  DataPathConnHandle dp_conn_handle;
-  DataPathBuffers dp_buffers;
-  DataPathEndpoint dp_e;
 };
 
 template <Backend b, Side s, Rpc... rpcs>

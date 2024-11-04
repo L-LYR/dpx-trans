@@ -60,7 +60,7 @@ class BorrowedBuffer : public ::BorrowedBuffer {
   doca_buf* buf = nullptr;
 };
 
-namespace comch::data_path {
+namespace comch {
 
 template <Side s>
 class Endpoint;
@@ -69,7 +69,7 @@ class Endpoint;
 
 class Buffers : public OwnedBuffer {
   template <Side s>
-  friend class comch::data_path::Endpoint;
+  friend class comch::Endpoint;
 
  public:
   Buffers(Device& dev, size_t n, size_t piece_len_) : OwnedBuffer(n * piece_len_), piece_len(piece_len_) {

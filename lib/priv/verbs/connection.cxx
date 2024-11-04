@@ -112,7 +112,7 @@ void ConnectionHandle::listen_and_accept() {
     auto event = c.wait(RDMA_CM_EVENT_CONNECT_REQUEST);
     e.id = event->id;
     e.setup_remote_param(event->param.conn);
-    e.setup_resources();
+    e.prepare();
     if (auto ec = rdma_accept(e.id, &e.local); ec < 0) {
       die("Fail to accept connection, errno: {}", errno);
     }
@@ -155,7 +155,7 @@ void ConnectionHandle::connect() {
       die("Fail to resolve route, errno: {}", errno);
     }
     c.wait_and_ack(RDMA_CM_EVENT_ROUTE_RESOLVED);
-    e.setup_resources();
+    e.prepare();
     if (auto ec = rdma_connect(e.id, &e.local); ec < 0) {
       die("Fail to establish connection, errno: {}", errno);
     }
