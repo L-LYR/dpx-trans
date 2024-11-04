@@ -18,6 +18,7 @@ class ConnectionHandle {
   using Endpoint = Endpoint<s>;
   using EndpointRef = std::reference_wrapper<Endpoint>;
   using EndpointRefs = std::vector<EndpointRef>;
+  using Predictor = std::function<bool(Endpoint&)>;
 
  public:
   ConnectionHandle(const ConnectionParam& param_) : param(param_) {}
@@ -37,7 +38,7 @@ class ConnectionHandle {
 
   void listen_and_accept() {
     progress_all_until([](Endpoint& e) { return e.conn != nullptr; });
-    std::ranges::for_each(pending_endpoints, [](Endpoint& e) { e.prepare(); });
+    for_each_endpoint([](Endpoint& e) { e.prepare(); });
     progress_all_until([](Endpoint& e) { return e.running(); });
   }
 
@@ -47,26 +48,27 @@ class ConnectionHandle {
 
   void connect() {
     progress_all_until([](Endpoint& e) { return e.conn != nullptr; });
-    std::ranges::for_each(pending_endpoints, [](Endpoint& e) { e.prepare(); });
+    for_each_endpoint([](Endpoint& e) { e.prepare(); });
     progress_all_until([](Endpoint& e) { return e.running(); });
   }
 
   void disconnect() {
-    std::ranges::for_each(pending_endpoints, [](Endpoint& e) { e.stop(); });
+    for_each_endpoint([](Endpoint& e) { e.stop(); });
     progress_all_until([](Endpoint& e) { return e.exited(); });
   }
 
  private:
-  void progress_all_until(std::function<bool(Endpoint& e)>&& predictor) {
+  void for_each_endpoint(Predictor&& p) { std::ranges::for_each(pending_endpoints, p); }
+  void progress_all_until(Predictor&& p) {
     while (true) {
       uint32_t n_satisfied = 0;
-      for (Endpoint& e : pending_endpoints) {
-        if (!predictor(e)) {
+      for_each_endpoint([&n_satisfied, p = std::move(p)](Endpoint& e) {
+        if (!p(e)) {
           e.progress();
         } else {
           n_satisfied++;
         }
-      }
+      });
       if (n_satisfied == pending_endpoints.size()) {
         return;
       } else {
