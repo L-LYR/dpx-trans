@@ -48,11 +48,11 @@ class BorrowedBuffer : public ::BorrowedBuffer {
   friend class comch::Endpoint;
 
  public:
-  BorrowedBuffer(doca_buf* buf_) : buf(buf_) {
+  explicit BorrowedBuffer(doca_buf* buf_) : buf(buf_) {
     doca_check(doca_buf_get_data(buf, reinterpret_cast<void**>(&base)));
     doca_check(doca_buf_get_data_len(buf, &len));
   }
-  ~BorrowedBuffer() { dec_ref(); }
+  ~BorrowedBuffer() {}
   BorrowedBuffer(BorrowedBuffer&& other) : ::BorrowedBuffer(std::move(other)) {
     buf = std::exchange(other.buf, nullptr);
   }
@@ -121,7 +121,8 @@ class Buffers : public OwnedBuffer {
     doca_buf* buf = nullptr;
     doca_check(doca_buf_pool_buf_alloc(p, &buf));
     doca_check(doca_buf_set_data_len(buf, piece_len));
-    return std::make_optional(BorrowedBuffer(buf));
+    INFO("{}", (void*)buf);
+    return BorrowedBuffer(buf);
   }
   void release_one(BorrowedBuffer&& buffer) {
     assert((buffer.size() == piece_len && base <= buffer.data() && buffer.data() + buffer.size() <= base + len));
