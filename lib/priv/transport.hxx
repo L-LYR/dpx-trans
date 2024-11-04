@@ -69,7 +69,7 @@ class Transport {
         cp_conn_handle(config.conn_param),
         cp_buffers(dev, config.queue_depth, config.max_rpc_msg_size),
         dp_buffers(dev, config.queue_depth, config.max_rpc_msg_size),
-        cp_e(dev, cp_buffers, dp_buffers, config.conn_param.name) {
+        cp_e(dev, cp_buffers, cp_buffers, config.conn_param.name) {
     establish_connections();
   }
 
