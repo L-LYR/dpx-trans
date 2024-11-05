@@ -21,6 +21,7 @@ class BufferPool : Noncopyable, Nonmovable {
  public:
   using BufferType = typename Buffers::BufferType;
   BufferPool(Buffers &&bs_) : bs(std::move(bs_)) {
+    TRACE("{}", bs.n_elements());
     for (auto i = 0uz; i < bs.n_elements(); ++i) {
       q.emplace_back(bs[i]);
     }

@@ -125,14 +125,14 @@ class BuffersBase : public OwnedBuffer {
 
   ~BuffersBase() = default;
 
-  BuffersBase(BuffersBase &&other) : OwnedBuffer(std::move(*this)) {
+  BuffersBase(BuffersBase &&other) : OwnedBuffer(std::move(other)) {
     piece_len = std::exchange(other.piece_len, -1);
     handles = std::exchange(other.handles, std::vector<BufferType>{});
   }
 
   BuffersBase &operator=(BuffersBase &&other) = delete;
 
-  size_t n_elements() const { return len / piece_len; }
+  size_t n_elements() const { return handles.size(); }
   size_t piece_size() const { return piece_len; }
   BufferType &operator[](size_t index) { return handles[index]; }
   const BufferType &operator[](size_t index) const { return handles[index]; }
