@@ -1,7 +1,7 @@
 #pragma once
 
 #include "concept/rpc.hxx"
-#include "memory/simple_buffer.hxx"
+#include "memory/simple_buffer_pool.hxx"
 #include "priv/common.hxx"
 #include "priv/doca_comch/connection.hxx"
 #include "priv/doca_comch/endpoint.hxx"
@@ -45,8 +45,11 @@ class Transport {
                                                  void>>>;
 
   using ConnectionParam = ConnectionParam<b>;
-  using CtrlPathBuffers= std::conditional_t<b == Backend::DOCA_Comch, doca::Buffers, naive::Buffers>;
-  using DataPathBuffers = std::conditional_t<b == Backend::DOCA_Comch, doca::Buffers, naive::Buffers>;
+  using RpcBufferPool=
+    std::conditional_t<b == Backend::DOCA_Comch, BufferPool<doca::Buffers>,
+                                                 BufferPool<naive::Buffers>>;
+  using BulkBufferPool = RpcBufferPool;
+  using RpcBuffer = RpcBufferPool::BufferType;
   // clang-format on
 
   template <Backend, Side, Rpc...>
@@ -57,9 +60,9 @@ class Transport {
     requires(b == Backend::TCP || b == Backend::Verbs)
       : config(config_),
         cp_conn_handle(config.conn_param),
-        cp_buffers(config.queue_depth, config.max_rpc_msg_size),
-        dp_buffers(config.queue_depth, config.max_rpc_msg_size),
-        cp_e(cp_buffers) {
+        cp_buffers(naive::Buffers(config.queue_depth, config.max_rpc_msg_size)),
+        dp_buffers(naive::Buffers(config.queue_depth, config.max_rpc_msg_size)),
+        cp_e(cp_buffers.buffers()) {
     establish_connections();
   }
 
@@ -67,9 +70,9 @@ class Transport {
     requires(b == Backend::DOCA_Comch)
       : config(config_),
         cp_conn_handle(config.conn_param),
-        cp_buffers(dev, config.queue_depth, config.max_rpc_msg_size),
-        dp_buffers(dev, config.queue_depth, config.max_rpc_msg_size),
-        cp_e(dev, cp_buffers, cp_buffers, config.conn_param.name) {
+        cp_buffers(doca::Buffers(dev, config.queue_depth, config.max_rpc_msg_size)),
+        dp_buffers(doca::Buffers(dev, config.queue_depth, config.max_rpc_msg_size)),
+        cp_e(dev, cp_buffers.buffers(), cp_buffers.buffers(), config.conn_param.name) {
     establish_connections();
   }
 
@@ -82,7 +85,8 @@ class Transport {
     auto call_seq = seq++;
     {
       TRACE("caller post recv");
-      auto recv_ctx = new OpContext(Op::Recv, acquire_buffer());
+      auto recv_buf = acquire_buffer();
+      auto recv_ctx = new OpContext(Op::Recv, recv_buf);
       auto n_read_f = cp_e.post_recv(*recv_ctx);
       boost::fibers::fiber([this, n_read_f = std::move(n_read_f), recv_ctx]() mutable {
         auto n_read = n_read_f.get();
@@ -101,7 +105,7 @@ class Transport {
         if (!(dispatch_response<rpcs>(-seq, id, deserializer) || ...)) {
           die("Mismatch rpc id, got {}", id);
         }
-        release_buffer(std::move(recv_ctx->buf));
+        release_buffer(recv_ctx->buf);
         delete recv_ctx;
       }).detach();
     }
@@ -110,7 +114,7 @@ class Transport {
     auto serializer = Serializer(send_buf);
     serializer(call_seq, Rpc::id, r).or_throw();
     TRACE("caller post write");
-    OpContext send_ctx(Op::Send, std::move(send_buf), serializer.position());
+    OpContext send_ctx(Op::Send, send_buf, serializer.position());
     auto n_write_f = cp_e.post_send(send_ctx);
     TRACE("send with seq: {} id: {}", call_seq, Rpc::id);
     auto rpc_ctx = new RpcContext<Rpc>;
@@ -122,7 +126,7 @@ class Transport {
       die("Fail to write payload, errno: {}", -n_write);
     }
     TRACE("caller write {}", n_write);
-    release_buffer(std::move(send_ctx.buf));
+    release_buffer(send_ctx.buf);
 
     return f;
   }
@@ -217,13 +221,13 @@ class Transport {
     buf.clear();
 
     TRACE("worker {} post recv", idx);
-    OpContext recv_ctx(Op::Recv, std::move(buf));
+    OpContext recv_ctx(Op::Recv, buf);
     auto n_read = cp_e.post_recv(recv_ctx).get();
     if (n_read < 0) {
       die("Fail to read payload, errno: {}", -n_read);
     } else if (n_read == 0) {
       TRACE("closed");
-      release_buffer(std::move(recv_ctx.buf));
+      release_buffer(recv_ctx.buf);
       return;
     }
     TRACE("worker {} read: {}", idx, n_read);
@@ -246,21 +250,21 @@ class Transport {
     }
 
     TRACE("worker {} post send", idx);
-    OpContext send_ctx(Op::Send, std::move(recv_ctx.buf), serializer.position());
+    OpContext send_ctx(Op::Send, recv_ctx.buf, serializer.position());
     auto n_write = cp_e.post_send(send_ctx).get();
     if (n_write < 0) {
       die("Fail to write payload, errno: {}", -n_write);
     } else if (n_write == 0) {
       TRACE("closed");
-      release_buffer(std::move(send_ctx.buf));
+      release_buffer(send_ctx.buf);
       return;
     }
     TRACE("worker {} write: {}", idx, n_write);
 
-    release_buffer(std::move(send_ctx.buf));
+    release_buffer(send_ctx.buf);
   }
 
-  BorrowedBuffer acquire_buffer() {
+  RpcBuffer &acquire_buffer() {
     while (true) {
       if (auto buf = cp_buffers.acquire_one(); buf.has_value()) {
         return std::move(buf).value();
@@ -270,13 +274,7 @@ class Transport {
     }
   }
 
-  void release_buffer(BorrowedBuffer &&buf) {
-    if constexpr (std::is_same_v<CtrlPathBuffers, doca::Buffers>) {
-      cp_buffers.release_one(std::move(static_cast<doca::BorrowedBuffer &>(buf)));
-    } else {
-      cp_buffers.release_one(std::move(buf));
-    }
-  }
+  void release_buffer(BorrowedBuffer &buf) { cp_buffers.release_one(static_cast<RpcBuffer &>(buf)); }
 
   void progress_until(std::function<bool()> &&predictor) {
     while (!(outstanding_rpcs.empty() && active_workers == 0 && predictor())) {
@@ -287,11 +285,12 @@ class Transport {
   }
 
   const Config<b> config;
-  int64_t seq = 1;
   CtrlPathConnHandle cp_conn_handle;
-  CtrlPathBuffers cp_buffers;
-  DataPathBuffers dp_buffers;
+  RpcBufferPool cp_buffers;
+  BulkBufferPool dp_buffers;
   CtrlPathEndpoint cp_e;
+
+  int64_t seq = 1;
   std::unordered_map<int64_t, ContextBase *> outstanding_rpcs;
   uint32_t active_workers = 0;
 };

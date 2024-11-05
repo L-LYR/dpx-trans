@@ -5,17 +5,14 @@
 
 #include <cassert>
 #include <cstdint>
-#include <list>
 #include <span>
 #include <utility>
-
-#include "util/noncopyable.hxx"
 
 template <typename BufferType>
 concept ByteView = zpp::bits::concepts::byte_view<BufferType>;
 
 template <bool own>
-class BufferBase : Noncopyable {
+class BufferBase {
  public:
   // for zpp_bits inner traits
   using value_type = uint8_t;
@@ -23,7 +20,7 @@ class BufferBase : Noncopyable {
   BufferBase() {}
 
   BufferBase(uint8_t *buf_, size_t len_)
-    requires(not own)
+    requires(!own)
       : base(buf_), len(len_) {
     clear();
   }
@@ -32,6 +29,24 @@ class BufferBase : Noncopyable {
       : base(new uint8_t[len_]), len(len_) {
     clear();
   }
+  BufferBase(const BufferBase &other)
+    requires(!own)
+  {
+    base = other.base;
+    len = other.len;
+  }
+  BufferBase &operator=(const BufferBase &other)
+    requires(!own)
+  {
+    base = other.base;
+    len = other.len;
+  }
+  BufferBase(BufferBase &other)
+    requires(own)
+  = delete;
+  BufferBase &operator=(BufferBase &other)
+    requires(own)
+  = delete;
   BufferBase(BufferBase &&other) {
     base = std::exchange(other.base, nullptr);
     len = std::exchange(other.len, -1);
@@ -80,64 +95,53 @@ class BufferBase : Noncopyable {
 using OwnedBuffer = BufferBase<true>;
 using BorrowedBuffer = BufferBase<false>;
 
+static_assert(!std::is_copy_assignable_v<OwnedBuffer>, "OwnedBuffer is not copy assginable");
+static_assert(!std::is_copy_constructible_v<OwnedBuffer>, "OwnedBuffer is not copy constructible");
 static_assert(ByteView<OwnedBuffer>, "Buffer is not a valid byte view");
+static_assert(std::is_copy_assignable_v<BorrowedBuffer>, "BorrowedBuffer is copy assginable");
+static_assert(std::is_copy_constructible_v<BorrowedBuffer>, "BorrowedBuffer is copy constructible");
 static_assert(ByteView<BorrowedBuffer>, "Buffer is not a valid byte view");
-
-using BorrowedBufferQueue = std::list<BorrowedBuffer>;
 
 namespace naive {
 
-class Buffers : public OwnedBuffer {
+template <typename Buffer>
+class BuffersBase : public OwnedBuffer {
  public:
-  Buffers(size_t n, size_t piece_len_) : OwnedBuffer(piece_len_ * n), piece_len(piece_len_) {
+  using BufferType = Buffer;
+
+  BuffersBase(size_t n, size_t piece_len_)
+    requires(!std::is_constructible_v<Buffer, uint8_t *, size_t>)
+      : OwnedBuffer(piece_len_ * n), piece_len(piece_len_) {}
+
+  BuffersBase(size_t n, size_t piece_len_)
+    requires(std::is_constructible_v<Buffer, uint8_t *, size_t>)
+      : OwnedBuffer(piece_len_ * n), piece_len(piece_len_) {
     uint8_t *p = base;
     for (auto i = 0uz; i < n; ++i) {
-      q.emplace_back(p, piece_len);
+      handles.emplace_back(p, piece_len);
       p += piece_len;
     }
   }
 
-  ~Buffers() = default;
+  ~BuffersBase() = default;
 
-  Buffers(Buffers &&other) : OwnedBuffer(std::move(*this)) {
+  BuffersBase(BuffersBase &&other) : OwnedBuffer(std::move(*this)) {
     piece_len = std::exchange(other.piece_len, -1);
-    q = std::exchange(other.q, BorrowedBufferQueue{});
+    handles = std::exchange(other.handles, std::vector<BufferType>{});
   }
 
-  Buffers &operator=(Buffers &&other) = delete;
-  // {
-  //   Base::operator=(std::move(other));
-  //   if (this != &other) {
-  //     free();
-  //     Base::operator=(std::move(other));
-  //     base = std::exchange(other.base, nullptr);
-  //     total_len = std::exchange(other.total_len, -1);
-  //     piece_len = std::exchange(other.piece_len, -1);
-  //   }
-  //   return *this;
-  // }
+  BuffersBase &operator=(BuffersBase &&other) = delete;
 
-  size_t n_free() const { return q.size(); }
   size_t n_elements() const { return len / piece_len; }
   size_t piece_size() const { return piece_len; }
-
-  std::optional<BorrowedBuffer> acquire_one() {
-    if (q.empty()) {
-      return {};
-    }
-    auto buffer = std::move(q.front());
-    q.pop_front();
-    return std::make_optional(std::move(buffer));
-  }
-
-  void release_one(BorrowedBuffer &&buffer) {
-    assert((buffer.size() == piece_len && base <= buffer.data() && buffer.data() + buffer.size() <= base + len));
-    q.emplace_back(std::move(buffer));
-  }
+  BufferType &operator[](size_t index) { return handles[index]; }
+  const BufferType &operator[](size_t index) const { return handles[index]; }
 
  protected:
   size_t piece_len = -1;
-  BorrowedBufferQueue q;
+  std::vector<BufferType> handles;
 };
+
+using Buffers = BuffersBase<BorrowedBuffer>;
 
 }  // namespace naive
