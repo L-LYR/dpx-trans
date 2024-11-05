@@ -41,12 +41,24 @@ class BorrowedBuffer : public ::BorrowedBuffer {
   friend class comch::Endpoint;
   friend class Buffers;
 
+  using Base = ::BorrowedBuffer;
+
  public:
   explicit BorrowedBuffer(doca_buf* buf_) : buf(buf_) {
     doca_check(doca_buf_get_data(buf, reinterpret_cast<void**>(&base)));
     doca_check(doca_buf_get_data_len(buf, &len));
   }
   ~BorrowedBuffer() = default;
+
+  BorrowedBuffer(const BorrowedBuffer& other) : Base(other), buf(other.buf) {}
+  BorrowedBuffer& operator=(const BorrowedBuffer& other) {
+    Base::operator=(other);
+    buf = other.buf;
+    return *this;
+  }
+
+  BorrowedBuffer(BorrowedBuffer&& other) : Base(std::move(other)), buf(std::exchange(other.buf, nullptr)) {}
+  BorrowedBuffer& operator=(BorrowedBuffer&& other) = delete;
 
  private:
   doca_buf* buf = nullptr;

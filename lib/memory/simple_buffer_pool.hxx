@@ -20,6 +20,7 @@ template <BuffersType Buffers>
 class BufferPool : Noncopyable, Nonmovable {
  public:
   using BufferType = typename Buffers::BufferType;
+  using BufferTypeRef = std::reference_wrapper<BufferType>;
   BufferPool(Buffers &&bs_) : bs(std::move(bs_)) {
     TRACE("{}", bs.n_elements());
     for (auto i = 0uz; i < bs.n_elements(); ++i) {
@@ -28,25 +29,26 @@ class BufferPool : Noncopyable, Nonmovable {
   }
   ~BufferPool() = default;
 
-  std::optional<std::reference_wrapper<BufferType>> acquire_one() {
+  std::optional<BufferTypeRef> acquire_one() {
     if (q.empty()) {
       return {};
     }
     auto &buf_ref = q.front();
-    TRACE("{} {}", (void *)buf_ref.get().data(), buf_ref.get().size());
+    TRACE("acquire {} {}", (void *)buf_ref.get().data(), buf_ref.get().size());
     q.pop_front();
     return std::make_optional(buf_ref);
   }
   void release_one(BufferType &buffer) {
     assert((buffer.size() == bs.piece_size() && bs.data() <= buffer.data() &&
             buffer.data() + buffer.size() <= bs.data() + bs.size()));
-    q.push_back(buffer);
+    q.emplace_back(buffer);
+    TRACE("release {} {}", (void *)q.back().get().data(), q.back().get().size());
   }
   Buffers &buffers() { return bs; }
   const Buffers &buffers() const { return bs; }
 
  private:
-  using BufferQ = std::list<std::reference_wrapper<BufferType>>;
+  using BufferQ = std::list<BufferTypeRef>;
 
   Buffers bs;
   BufferQ q;

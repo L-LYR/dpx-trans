@@ -43,11 +43,12 @@ class BufferBase {
   {
     base = other.base;
     len = other.len;
+    return *this;
   }
   BufferBase(BufferBase &other)
     requires(own)
   = delete;
-  BufferBase &operator=(BufferBase &other)
+  BufferBase &operator=(const BufferBase &other)
     requires(own)
   = delete;
   BufferBase(BufferBase &&other) {
