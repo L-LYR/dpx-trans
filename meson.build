@@ -26,6 +26,8 @@ cpp_extra_args = [
 
 if get_option('buildtype') == 'release'
     c_cpp_extra_args += '-DSPDLOG_ACTIVE_LEVEL=SPDLOG_LEVEL_INFO'
+elif get_option('buildtype') == 'debugoptimized'
+    c_cpp_extra_args += '-DSPDLOG_ACTIVE_LEVEL=SPDLOG_LEVEL_DEBUG'
 else
     c_cpp_extra_args += '-DSPDLOG_ACTIVE_LEVEL=SPDLOG_LEVEL_TRACE'
     c_cpp_extra_args += '-DENABLE_CHECK_FOOTPRINT'

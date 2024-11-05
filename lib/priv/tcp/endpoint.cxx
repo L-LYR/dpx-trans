@@ -46,10 +46,10 @@ op_res_future_t Endpoint::post(OpContext &ctx) {
   auto &buf = ctx.buf;
   auto sqe = io_uring_get_sqe(&ring);
   if constexpr (op == Op::Send) {
-    TRACE("{} {}", (void *)buf.data(), buf.size());
+    DEBUG("{} {}", (void *)buf.data(), buf.size());
     io_uring_prep_write_fixed(sqe, sock, buf.data(), buf.size(), 0, 0);
   } else if constexpr (op == Op::Recv) {
-    TRACE("{} {}", (void *)buf.data(), buf.size());
+    DEBUG("{} {}", (void *)buf.data(), buf.size());
     io_uring_prep_read_fixed(sqe, sock, buf.data(), buf.size(), 0, 0);
   } else {
     static_unreachable;

@@ -62,7 +62,7 @@ class Buffers : public OwnedBuffer {
   using BufferType = BorrowedBuffer;
 
   Buffers(Device& dev, size_t n, size_t piece_len_) : OwnedBuffer(n * piece_len_), piece_len(piece_len_) {
-    TRACE("Buffers: {} elements with piece length {}", n, piece_len);
+    DEBUG("Buffers {} elements with piece length {}", n, piece_len);
     doca_check(doca_mmap_create(&mmap));
     doca_check(doca_mmap_add_dev(mmap, dev.dev));
     doca_check(doca_mmap_set_permissions(mmap, DOCA_ACCESS_FLAG_PCI_READ_WRITE));

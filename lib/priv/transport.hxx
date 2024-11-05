@@ -84,7 +84,7 @@ class Transport {
   {
     auto call_seq = seq++;
     {
-      TRACE("caller post recv");
+      DEBUG("caller post recv");
       auto recv_ctx = new OpContext(Op::Recv, acquire_recv_buffer());
       auto n_read_f = cp_e.post_recv(*recv_ctx);
       boost::fibers::fiber([this, n_read_f = std::move(n_read_f), recv_ctx]() mutable {
@@ -92,12 +92,12 @@ class Transport {
         if (n_read <= 0) {
           die("Fail to read payload, errno: {}", -n_read);
         }
-        TRACE("caller read {}", n_read);
+        DEBUG("caller read {}", n_read);
         auto deserializer = Deserializer(recv_ctx->buf);
         int64_t seq = 0;
         rpc_id_t id = 0;
         deserializer(seq, id).or_throw();
-        TRACE("recv with seq: {} id: {}", seq, id);
+        DEBUG("recv with seq: {} id: {}", seq, id);
         if (seq >= 0) {
           die("Payload is not response");
         }
@@ -112,10 +112,10 @@ class Transport {
     OpContext send_ctx(Op::Send, acquire_send_buffer());
     auto serializer = Serializer(send_ctx.buf);
     serializer(call_seq, Rpc::id, r).or_throw();
-    TRACE("caller post write {}", serializer.position());
+    DEBUG("caller post write {}", serializer.position());
     send_ctx.len = serializer.position();
     auto n_write_f = cp_e.post_send(send_ctx);
-    TRACE("send with seq: {} id: {}", call_seq, Rpc::id);
+    DEBUG("send with seq: {} id: {}", call_seq, Rpc::id);
     auto rpc_ctx = new RpcContext<Rpc>;
     resp_future_t<Rpc> f = rpc_ctx->resp.get_future();
     [[maybe_unused]] auto [_, ok] = outstanding_rpcs.emplace(call_seq, rpc_ctx);
@@ -124,7 +124,7 @@ class Transport {
     if (n_write <= 0) {
       die("Fail to write payload, errno: {}", -n_write);
     }
-    TRACE("caller write {}", n_write);
+    DEBUG("caller write {}", n_write);
     release_send_buffer(send_ctx.buf);
 
     return f;
@@ -198,7 +198,7 @@ class Transport {
       req_t<Rpc> req = {};
       deserializer(req).or_throw();
       resp_t<Rpc> resp = Rpc()(req);
-      TRACE("send seq: {}, id: {}", -seq, id);
+      DEBUG("send seq: {}, id: {}", -seq, id);
       serializer(-seq, Rpc::id, resp).or_throw();
       return true;
     }
@@ -212,27 +212,27 @@ class Transport {
     // constexpr uint64_t ids[] = {Rpcs::id...};
 
     if (!cp_e.running()) {
-      TRACE("not running");
+      DEBUG("not running");
       return;
     }
 
-    TRACE("worker {} post recv", idx);
+    DEBUG("worker {} post recv", idx);
     OpContext recv_ctx(Op::Recv, acquire_recv_buffer());
     recv_ctx.buf.clear();
     auto n_read = cp_e.post_recv(recv_ctx).get();
     if (n_read < 0) {
       die("Fail to read payload, errno: {}", -n_read);
     } else if (n_read == 0) {
-      TRACE("closed");
+      DEBUG("closed");
       release_recv_buffer(recv_ctx.buf);
       return;
     }
-    TRACE("worker {} read: {}", idx, n_read);
+    DEBUG("worker {} read: {}", idx, n_read);
     auto deserializer = Deserializer(recv_ctx.buf);
     int64_t seq = 0;
     rpc_id_t id = 0;
     deserializer(seq, id).or_throw();
-    TRACE("recv seq: {} id: {}", seq, id);
+    DEBUG("recv seq: {} id: {}", seq, id);
     if (seq < 0) {
       die("Payload is not request");
     }
@@ -245,17 +245,17 @@ class Transport {
     }
     release_recv_buffer(recv_ctx.buf);
 
-    TRACE("worker {} post send {}", idx, serializer.position());
+    DEBUG("worker {} post send {}", idx, serializer.position());
     send_ctx.len = serializer.position();
     auto n_write = cp_e.post_send(send_ctx).get();
     if (n_write < 0) {
       die("Fail to write payload, errno: {}", -n_write);
     } else if (n_write == 0) {
-      TRACE("closed");
+      DEBUG("closed");
       release_send_buffer(send_ctx.buf);
       return;
     }
-    TRACE("worker {} write: {}", idx, n_write);
+    DEBUG("worker {} write: {}", idx, n_write);
 
     release_send_buffer(send_ctx.buf);
   }
@@ -309,12 +309,12 @@ class TransportGuard : Noncopyable, Nonmovable {
   TransportGuard(Transport<b, s, rpcs...> &t_) : t(t_) {
     // TODO add a futex to fast detect race and then die.
     poller = boost::fibers::fiber([this]() { t.progress_until([this] { return exit; }); });
-    TRACE("Transport attach to current thread");
+    DEBUG("Transport attach to current thread");
   }
   ~TransportGuard() {
     exit = true;
     poller.join();
-    TRACE("Transport dettach with current thread");
+    DEBUG("Transport dettach with current thread");
   }
 
  private:

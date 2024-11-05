@@ -49,7 +49,7 @@ class BufferBase {
 class OwnedBuffer : public BufferBase, Noncopyable, Nonmovable {
  public:
   explicit OwnedBuffer(size_t size) : BufferBase(new uint8_t[size], size) {
-    TRACE("OwnedBuffer at {} with length {}", (void *)base, len);
+    DEBUG("OwnedBuffer at {} with length {}", (void *)base, len);
   }
   ~OwnedBuffer() {
     if (base != nullptr) {

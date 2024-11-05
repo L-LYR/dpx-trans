@@ -119,7 +119,7 @@ void ConnectionHandle::listen_and_accept() {
     e.id->context = &e;
     c.ack(event);
     c.wait_and_ack(RDMA_CM_EVENT_ESTABLISHED);
-    TRACE(get_cm_connection_info(e.id));
+    DEBUG(get_cm_connection_info(e.id));
     e.run();
   });
 }
@@ -162,7 +162,7 @@ void ConnectionHandle::connect() {
     auto event = c.wait(RDMA_CM_EVENT_ESTABLISHED);
     e.setup_remote_param(event->param.conn);
     c.ack(event);
-    TRACE(get_cm_connection_info(e.id));
+    DEBUG(get_cm_connection_info(e.id));
     e.run();
     i++;
   });
