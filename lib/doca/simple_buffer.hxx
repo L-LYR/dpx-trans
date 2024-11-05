@@ -64,6 +64,7 @@ class Buffers : public naive::BuffersBase<BorrowedBuffer> {
     doca_check(doca_mmap_create(&m));
     doca_check(doca_mmap_add_dev(m, dev.dev));
     doca_check(doca_mmap_set_permissions(m, DOCA_ACCESS_FLAG_PCI_READ_WRITE));
+    INFO("{} {} {} {}", (void*)base, n, len, piece_len);
     doca_check(doca_mmap_set_memrange(m, base, len));
     doca_check(doca_mmap_start(m));
     doca_check(doca_buf_pool_create(n, piece_len, m, &p));
@@ -73,11 +74,16 @@ class Buffers : public naive::BuffersBase<BorrowedBuffer> {
       doca_check(doca_buf_pool_buf_alloc(p, &buf));
       doca_check(doca_buf_set_data_len(buf, piece_len));
       handles.emplace_back(BorrowedBuffer(buf));
+      uint16_t ref_cnt = 0;
+      doca_check(doca_buf_get_refcount(buf, &ref_cnt));
+      INFO("{} {} {} {}", (void*)handles.back().buf, (void*)handles.back().base, handles.back().len, ref_cnt);
     }
   }
 
   ~Buffers() {
+    TRACE("????? dtor");
     for (auto& h : handles) {
+      TRACE("{} {}", (void*)h.buf, (void*)h.base, h.len);
       doca_check(doca_buf_dec_refcount(h.buf, nullptr));
     }
     if (p != nullptr) {

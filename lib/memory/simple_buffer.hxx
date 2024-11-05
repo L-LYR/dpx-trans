@@ -8,6 +8,8 @@
 #include <span>
 #include <utility>
 
+#include "util/logger.hxx"
+
 template <typename BufferType>
 concept ByteView = zpp::bits::concepts::byte_view<BufferType>;
 
@@ -27,6 +29,7 @@ class BufferBase {
   explicit BufferBase(size_t len_)
     requires(own)
       : base(new uint8_t[len_]), len(len_) {
+    TRACE("{} {}", (void *)base, len);
     clear();
   }
   BufferBase(const BufferBase &other)
@@ -51,15 +54,14 @@ class BufferBase {
     base = std::exchange(other.base, nullptr);
     len = std::exchange(other.len, -1);
   }
-  BufferBase &operator=(BufferBase &&other) {
-    if (this != &other) {
-      free();
-      base = std::exchange(other.base, nullptr);
-      len = std::exchange(other.len, -1);
+  BufferBase &operator=(BufferBase &&other) = delete;
+  ~BufferBase() {
+    if constexpr (own) {
+      if (base != nullptr) {
+        delete[] base;
+      }
     }
-    return *this;
   }
-  ~BufferBase() { free(); }
 
   uint8_t *data() { return base; }
   const uint8_t *data() const { return base; }
@@ -80,14 +82,6 @@ class BufferBase {
   operator iovec() const { return iovec{.iov_base = reinterpret_cast<void *>(base), .iov_len = len}; }
 
  protected:
-  void free() {
-    if constexpr (own) {
-      if (base != nullptr) {
-        delete[] base;
-      }
-    }
-  }
-
   uint8_t *base = nullptr;
   size_t len = -1;
 };
@@ -118,6 +112,7 @@ class BuffersBase : public OwnedBuffer {
       : OwnedBuffer(piece_len_ * n), piece_len(piece_len_) {
     uint8_t *p = base;
     for (auto i = 0uz; i < n; ++i) {
+      TRACE("{} {}", (void *)p, piece_len);
       handles.emplace_back(p, piece_len);
       p += piece_len;
     }

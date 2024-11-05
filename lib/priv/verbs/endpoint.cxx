@@ -113,7 +113,7 @@ Endpoint::~Endpoint() {
 
 void Endpoint::prepare() {
   assert(id != nullptr);
-  uint32_t n_wr = buffers.size();
+  uint32_t n_wr = buffers.n_elements();
   if (pd = ibv_alloc_pd(id->verbs); pd == nullptr) {
     die("Fail to allocate pd, errno {}", errno);
   }

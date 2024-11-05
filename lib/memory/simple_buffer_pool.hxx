@@ -33,6 +33,7 @@ class BufferPool : Noncopyable, Nonmovable {
       return {};
     }
     auto &buf_ref = q.front();
+    TRACE("{} {}", (void *)buf_ref.get().data(), buf_ref.get().size());
     q.pop_front();
     return std::make_optional(buf_ref);
   }
