@@ -33,10 +33,10 @@ class BufferPool : Noncopyable, Nonmovable {
     if (q.empty()) {
       return {};
     }
-    auto &buf_ref = q.front();
-    TRACE("acquire {} {}", (void *)buf_ref.get().data(), buf_ref.get().size());
+    auto &buf = q.front().get();
+    TRACE("acquire {} {}", (void *)buf.data(), buf.size());
     q.pop_front();
-    return std::make_optional(buf_ref);
+    return std::make_optional(buf);
   }
   void release_one(BufferType &buffer) {
     assert((buffer.size() == bs.piece_size() && bs.data() <= buffer.data() &&
