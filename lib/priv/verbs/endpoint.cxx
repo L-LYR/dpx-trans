@@ -111,9 +111,9 @@ Endpoint::~Endpoint() {
   }
 }
 
-void Endpoint::setup_resources() {
+void Endpoint::prepare() {
   assert(id != nullptr);
-  uint32_t n_wr = buffers.size();
+  uint32_t n_wr = buffers.n_elements();
   if (pd = ibv_alloc_pd(id->verbs); pd == nullptr) {
     die("Fail to allocate pd, errno {}", errno);
   }
@@ -159,6 +159,7 @@ void Endpoint::setup_resources() {
   local.rnr_retry_count = 7;
   local.private_data = &local_mr_h;
   local.private_data_len = sizeof(local_mr_h);
+  EndpointBase::prepare();
 }
 
 void Endpoint::setup_remote_param(const rdma_conn_param& remote_) {

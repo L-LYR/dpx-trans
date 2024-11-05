@@ -28,8 +28,10 @@ class Endpoint : public EndpointBase {
 
   bool progress();
 
+ protected:
+  void prepare();
+
  private:
-  void setup_resources();
   void setup_remote_param(const rdma_conn_param& remote_);
 
   naive::Buffers& buffers;

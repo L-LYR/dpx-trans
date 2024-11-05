@@ -22,12 +22,13 @@ using op_res_future_t = boost::fibers::future<int>;
 
 struct OpContext : public ContextBase {
   Op op;
-  BorrowedBuffer buf;
+  BorrowedBuffer &buf;
+
   size_t len = -1;
   op_res_promise_t op_res = {};
 
-  OpContext(Op op_, BorrowedBuffer &&buf_) : op(op_), buf(std::move(buf_)), len(buf.size()) {}
-  OpContext(Op op_, BorrowedBuffer &&buf_, size_t len_) : op(op_), buf(std::move(buf_)), len(len_) {}
+  OpContext(Op op_, BorrowedBuffer &buf_) : op(op_), buf(buf_), len(buf.size()) {}
+  OpContext(Op op_, BorrowedBuffer &buf_, size_t len_) : op(op_), buf(buf_), len(len_) {}
 };
 
 template <Rpc Rpc>
@@ -57,6 +58,7 @@ enum class Side {
 
 // TODO: unused currently
 enum class Status {
+  Idle,
   Ready,
   Running,
   Stopping,
@@ -65,15 +67,21 @@ enum class Status {
 
 class EndpointBase : Noncopyable, Nonmovable {
  public:
-  explicit EndpointBase(Status s_ = Status::Ready) : s(s_) {}
+  explicit EndpointBase(Status s_ = Status::Idle) : s(s_) {}
   ~EndpointBase() = default;
 
+  bool idle() const { return s == Status::Idle; }
   bool ready() const { return s == Status::Ready; }
   bool running() const { return s == Status::Running; }
   bool stopping() const { return s == Status::Stopping; }
   bool exited() const { return s == Status::Exited; }
 
  protected:
+  void prepare() {
+    assert(idle());
+    s = Status::Ready;
+    TRACE("Endpoint status change: Idle -> Ready");
+  }
   void run() {
     assert(ready());
     s = Status::Running;
@@ -111,7 +119,7 @@ struct std::formatter<Status> : std::formatter<const char *> {
   template <typename Context>
   Context::iterator format(Status s, Context out) const {
     switch (s) {
-      case Status::Exited:
+      case Status::Idle:
         return std::formatter<const char *>::format("Idle", out);
       case Status::Ready:
         return std::formatter<const char *>::format("Ready", out);
@@ -119,6 +127,8 @@ struct std::formatter<Status> : std::formatter<const char *> {
         return std::formatter<const char *>::format("Running", out);
       case Status::Stopping:
         return std::formatter<const char *>::format("Stopped", out);
+      case Status::Exited:
+        return std::formatter<const char *>::format("Exited", out);
     }
   }
 };

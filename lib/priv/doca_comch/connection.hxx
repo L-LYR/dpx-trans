@@ -10,10 +10,6 @@ struct ConnectionParam {
   std::string name;
 };
 
-}  // namespace doca::comch
-
-namespace doca::comch::ctrl_path {
-
 template <Side s>
 class Endpoint;
 
@@ -22,6 +18,7 @@ class ConnectionHandle {
   using Endpoint = Endpoint<s>;
   using EndpointRef = std::reference_wrapper<Endpoint>;
   using EndpointRefs = std::vector<EndpointRef>;
+  using Predictor = std::function<bool(Endpoint&)>;
 
  public:
   ConnectionHandle(const ConnectionParam& param_) : param(param_) {}
@@ -40,6 +37,8 @@ class ConnectionHandle {
   }
 
   void listen_and_accept() {
+    progress_all_until([](Endpoint& e) { return e.conn != nullptr; });
+    for_each_endpoint([](Endpoint& e) { e.prepare(); });
     progress_all_until([](Endpoint& e) { return e.running(); });
   }
 
@@ -48,28 +47,31 @@ class ConnectionHandle {
   }
 
   void connect() {
+    progress_all_until([](Endpoint& e) { return e.conn != nullptr; });
+    for_each_endpoint([](Endpoint& e) { e.prepare(); });
     progress_all_until([](Endpoint& e) { return e.running(); });
   }
 
   void disconnect() {
-    std::ranges::for_each(pending_endpoints, [](Endpoint& e) {
-      e.stop();
-      e.conn = nullptr;
-    });
+    for_each_endpoint([](Endpoint& e) { e.stop(); });
     progress_all_until([](Endpoint& e) { return e.exited(); });
   }
 
  private:
-  void progress_all_until(std::function<bool(Endpoint& e)>&& predictor) {
+  template <typename Fn>
+  void for_each_endpoint(Fn&& fn) {
+    std::ranges::for_each(pending_endpoints, fn);
+  }
+  void progress_all_until(Predictor&& p) {
     while (true) {
       uint32_t n_satisfied = 0;
-      for (Endpoint& e : pending_endpoints) {
-        if (!predictor(e)) {
+      for_each_endpoint([&n_satisfied, &p](Endpoint& e) {
+        if (!p(e)) {
           e.progress();
         } else {
           n_satisfied++;
         }
-      }
+      });
       if (n_satisfied == pending_endpoints.size()) {
         return;
       } else {
@@ -82,4 +84,4 @@ class ConnectionHandle {
   EndpointRefs pending_endpoints;
 };
 
-}  // namespace doca::comch::ctrl_path
+}  // namespace doca::comch

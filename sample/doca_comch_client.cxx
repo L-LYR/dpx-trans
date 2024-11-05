@@ -36,7 +36,7 @@ int main(int argc, char* argv[]) {
   Transport<Backend::DOCA_Comch, Side::ClientSide, EchoRpc> t(dev, c);
 
   auto call_fn = [&]() {
-    for (auto i = 0; i < 2; i++) {
+    for (auto i = 0; i < 10000; i++) {
       auto echo_resp = t.call<EchoRpc>(payload_4k);
       auto resp = echo_resp.get();
     }
