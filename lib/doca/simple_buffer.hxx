@@ -61,7 +61,7 @@ class Buffers : public OwnedBuffer {
  public:
   using BufferType = BorrowedBuffer;
 
-  Buffers(Device& dev, size_t n, size_t piece_len_) : OwnedBuffer(n * piece_len_) {
+  Buffers(Device& dev, size_t n, size_t piece_len_) : OwnedBuffer(n * piece_len_), piece_len(piece_len_) {
     TRACE("Buffers: {} elements with piece length {}", n, piece_len);
     doca_check(doca_mmap_create(&mmap));
     doca_check(doca_mmap_add_dev(mmap, dev.dev));
