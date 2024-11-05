@@ -243,7 +243,6 @@ class Transport {
     if (seq < 0) {
       die("Payload is not request");
     }
-    release_recv_buffer(recv_buf);
 
     auto send_buf = acquire_send_buffer();
     send_buf.clear();
@@ -251,6 +250,8 @@ class Transport {
     if (!(dispatch_request<rpcs>(seq, id, deserializer, serializer) || ...)) {
       die("Mismatch rpc id, got {}", id);
     }
+
+    release_recv_buffer(recv_buf);
 
     TRACE("worker {} post send {}", idx, serializer.position());
     OpContext send_ctx(Op::Send, send_buf, serializer.position());
