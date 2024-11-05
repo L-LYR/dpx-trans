@@ -271,7 +271,7 @@ class Transport {
   RpcBuffer &acquire_recv_buffer() {
     while (true) {
       if (auto buf = recv_bufs.acquire_one(); buf.has_value()) {
-        return std::move(buf).value();
+        return std::move(buf).value().get();
       } else {
         boost::this_fiber::yield();
       }
@@ -283,7 +283,7 @@ class Transport {
   RpcBuffer &acquire_send_buffer() {
     while (true) {
       if (auto buf = send_bufs.acquire_one(); buf.has_value()) {
-        return std::move(buf).value();
+        return std::move(buf).value().get();
       } else {
         boost::this_fiber::yield();
       }
