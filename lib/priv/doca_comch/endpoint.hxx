@@ -99,7 +99,7 @@ class Endpoint : public EndpointBase {
 
   bool progress() { return doca_pe_progress(cp_pe); }
 
-  op_res_future_t post_recv(OpContext &ctx) {
+  op_res_future_t dp_post_recv(OpContext &ctx) {
     doca_comch_consumer_task_post_recv *task = nullptr;
     auto &buf = static_cast<doca::BorrowedBuffer &>(ctx.buf);
     TRACE("{}", (void *)buf.buf);
@@ -109,7 +109,7 @@ class Endpoint : public EndpointBase {
     return ctx.op_res.get_future();
   }
 
-  op_res_future_t post_send(OpContext &ctx) {
+  op_res_future_t dp_post_send(OpContext &ctx) {
     doca_comch_producer_task_send *task = nullptr;
     auto &buf = static_cast<doca::BorrowedBuffer &>(ctx.buf);
     TRACE("pro {} {}", (void *)pro, (void *)buf.buf);
@@ -121,12 +121,12 @@ class Endpoint : public EndpointBase {
     return ctx.op_res.get_future();
   }
 
-  op_res_future_t cp_post_recv(OpContext &ctx) {
+  op_res_future_t post_recv(OpContext &ctx) {
     recv_ops_q.emplace_back(ctx);
     return ctx.op_res.get_future();
   }
 
-  op_res_future_t cp_post_send(OpContext &ctx) {
+  op_res_future_t post_send(OpContext &ctx) {
     doca_comch_task_send *task = nullptr;
     if constexpr (side == Side::ServerSide) {
       doca_check(doca_comch_server_task_send_alloc_init(s, conn, ctx.buf.data(), ctx.len, &task));
