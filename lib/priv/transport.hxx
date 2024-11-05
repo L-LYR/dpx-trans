@@ -60,8 +60,8 @@ class Transport {
     requires(b == Backend::TCP || b == Backend::Verbs)
       : config(config_),
         cp_conn_handle(config.conn_param),
-        send_bufs(naive::Buffers(config.queue_depth, config.max_rpc_msg_size)),
-        recv_bufs(naive::Buffers(config.queue_depth, config.max_rpc_msg_size)),
+        send_bufs(config.queue_depth, config.max_rpc_msg_size),
+        recv_bufs(config.queue_depth, config.max_rpc_msg_size),
         cp_e(send_bufs.buffers()) {
     establish_connections();
   }
@@ -70,8 +70,8 @@ class Transport {
     requires(b == Backend::DOCA_Comch)
       : config(config_),
         cp_conn_handle(config.conn_param),
-        send_bufs(doca::Buffers(dev, config.queue_depth, config.max_rpc_msg_size)),
-        recv_bufs(doca::Buffers(dev, config.queue_depth, config.max_rpc_msg_size)),
+        send_bufs(dev, config.queue_depth, config.max_rpc_msg_size),
+        recv_bufs(dev, config.queue_depth, config.max_rpc_msg_size),
         cp_e(dev, recv_bufs.buffers(), send_bufs.buffers(), config.conn_param.name) {
     establish_connections();
   }

@@ -21,7 +21,8 @@ class BufferPool : Noncopyable, Nonmovable {
  public:
   using BufferType = typename Buffers::BufferType;
   using BufferTypeRef = std::reference_wrapper<BufferType>;
-  BufferPool(Buffers &&bs_) : bs(std::move(bs_)) {
+  template <typename... Args>
+  BufferPool(Args &&...args) : bs(std::forward(args)...) {
     TRACE("{}", bs.n_elements());
     for (auto i = 0uz; i < bs.n_elements(); ++i) {
       q.emplace_back(bs[i]);

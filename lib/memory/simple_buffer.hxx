@@ -6,7 +6,6 @@
 #include <cassert>
 #include <cstdint>
 #include <span>
-#include <utility>
 
 #include "util/logger.hxx"
 
@@ -32,30 +31,20 @@ class BufferBase {
     TRACE("{} {}", (void *)base, len);
     clear();
   }
+
   BufferBase(const BufferBase &other)
-    requires(!own)
-  {
-    base = other.base;
-    len = other.len;
-  }
-  BufferBase &operator=(const BufferBase &other)
-    requires(!own)
-  {
-    base = other.base;
-    len = other.len;
-    return *this;
-  }
-  BufferBase(BufferBase &other)
     requires(own)
   = delete;
   BufferBase &operator=(const BufferBase &other)
     requires(own)
   = delete;
-  BufferBase(BufferBase &&other) {
-    base = std::exchange(other.base, nullptr);
-    len = std::exchange(other.len, -1);
-  }
-  BufferBase &operator=(BufferBase &&other) = delete;
+  BufferBase(BufferBase &&other)
+    requires(own)
+  = delete;
+  BufferBase &operator=(BufferBase &&other)
+    requires(own)
+  = delete;
+
   ~BufferBase() {
     if constexpr (own) {
       if (base != nullptr) {
@@ -90,11 +79,7 @@ class BufferBase {
 using OwnedBuffer = BufferBase<true>;
 using BorrowedBuffer = BufferBase<false>;
 
-static_assert(!std::is_copy_assignable_v<OwnedBuffer>, "OwnedBuffer is not copy assginable");
-static_assert(!std::is_copy_constructible_v<OwnedBuffer>, "OwnedBuffer is not copy constructible");
 static_assert(ByteView<OwnedBuffer>, "Buffer is not a valid byte view");
-static_assert(std::is_copy_assignable_v<BorrowedBuffer>, "BorrowedBuffer is copy assginable");
-static_assert(std::is_copy_constructible_v<BorrowedBuffer>, "BorrowedBuffer is copy constructible");
 static_assert(ByteView<BorrowedBuffer>, "Buffer is not a valid byte view");
 
 namespace naive {
@@ -120,13 +105,6 @@ class BuffersBase : public OwnedBuffer {
   }
 
   ~BuffersBase() = default;
-
-  BuffersBase(BuffersBase &&other) : OwnedBuffer(std::move(other)) {
-    piece_len = std::exchange(other.piece_len, -1);
-    handles = std::exchange(other.handles, std::vector<BufferType>{});
-  }
-
-  BuffersBase &operator=(BuffersBase &&other) = delete;
 
   size_t n_elements() const { return handles.size(); }
   size_t piece_size() const { return piece_len; }

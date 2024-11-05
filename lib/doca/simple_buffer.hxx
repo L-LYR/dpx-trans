@@ -41,24 +41,13 @@ class BorrowedBuffer : public ::BorrowedBuffer {
   friend class comch::Endpoint;
   friend class Buffers;
 
-  using Base = ::BorrowedBuffer;
-
  public:
+  BorrowedBuffer() {}
   explicit BorrowedBuffer(doca_buf* buf_) : buf(buf_) {
     doca_check(doca_buf_get_data(buf, reinterpret_cast<void**>(&base)));
     doca_check(doca_buf_get_data_len(buf, &len));
   }
   ~BorrowedBuffer() = default;
-
-  BorrowedBuffer(const BorrowedBuffer& other) : Base(other), buf(other.buf) {}
-  BorrowedBuffer& operator=(const BorrowedBuffer& other) {
-    Base::operator=(other);
-    buf = other.buf;
-    return *this;
-  }
-
-  BorrowedBuffer(BorrowedBuffer&& other) : Base(std::move(other)), buf(std::exchange(other.buf, nullptr)) {}
-  BorrowedBuffer& operator=(BorrowedBuffer&& other) = delete;
 
  private:
   doca_buf* buf = nullptr;
@@ -85,7 +74,7 @@ class Buffers : public naive::BuffersBase<BorrowedBuffer> {
       doca_buf* buf = nullptr;
       doca_check(doca_buf_pool_buf_alloc(p, &buf));
       doca_check(doca_buf_set_data_len(buf, piece_len));
-      handles.emplace_back(BorrowedBuffer(buf));
+      handles.emplace_back(buf);
       uint16_t ref_cnt = 0;
       doca_check(doca_buf_get_refcount(buf, &ref_cnt));
       INFO("{} {} {} {}", (void*)handles.back().buf, (void*)handles.back().base, handles.back().len, ref_cnt);
@@ -107,13 +96,6 @@ class Buffers : public naive::BuffersBase<BorrowedBuffer> {
       doca_check(doca_mmap_destroy(m));
     }
   }
-
-  Buffers(Buffers&& other) : Base(std::move(other)) {
-    m = std::exchange(other.m, nullptr);
-    p = std::exchange(other.p, nullptr);
-  }
-
-  Buffers& operator=(Buffers&& other) = delete;
 
  protected:
   doca_mmap* mmap() { return m; }
