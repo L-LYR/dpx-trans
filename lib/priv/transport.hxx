@@ -85,7 +85,7 @@ class Transport {
     auto call_seq = seq++;
     {
       TRACE("caller post recv");
-      auto recv_buf = acquire_recv_buffer();
+      auto &recv_buf = acquire_recv_buffer();
       auto recv_ctx = new OpContext(Op::Recv, recv_buf);
       auto n_read_f = cp_e.post_recv(*recv_ctx);
       boost::fibers::fiber([this, n_read_f = std::move(n_read_f), recv_ctx, recv_buf]() mutable {
@@ -110,7 +110,7 @@ class Transport {
       }).detach();
     }
 
-    auto send_buf = acquire_send_buffer();
+    auto &send_buf = acquire_send_buffer();
     auto serializer = Serializer(send_buf);
     serializer(call_seq, Rpc::id, r).or_throw();
     TRACE("caller post write {}", serializer.position());
@@ -217,7 +217,7 @@ class Transport {
       return;
     }
 
-    auto recv_buf = acquire_recv_buffer();
+    auto &recv_buf = acquire_recv_buffer();
     recv_buf.clear();
 
     TRACE("worker {} post recv", idx);
@@ -244,7 +244,7 @@ class Transport {
       die("Payload is not request");
     }
 
-    auto send_buf = acquire_send_buffer();
+    auto &send_buf = acquire_send_buffer();
     send_buf.clear();
     auto serializer = Serializer(send_buf);
     if (!(dispatch_request<rpcs>(seq, id, deserializer, serializer) || ...)) {
