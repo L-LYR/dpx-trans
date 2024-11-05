@@ -154,7 +154,7 @@ class Endpoint : public EndpointBase {
       doca_check(doca_ctx_start(ctx));
     }
     {
-      doca_check(doca_comch_consumer_create(conn, bulk_buffers.mmap(), &con));
+      doca_check(doca_comch_consumer_create(conn, bulk_buffers.mmap, &con));
       auto ctx = doca_comch_consumer_as_ctx(con);
       doca_check(doca_pe_connect_ctx(cp_pe, ctx));
       doca_check(doca_ctx_set_state_changed_cb(ctx, consumer_state_change_cb));

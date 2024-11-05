@@ -22,13 +22,12 @@ using op_res_future_t = boost::fibers::future<int>;
 
 struct OpContext : public ContextBase {
   Op op;
-  BorrowedBuffer &buf;
-
+  BufferBase &buf;
   size_t len = -1;
   op_res_promise_t op_res = {};
 
-  OpContext(Op op_, BorrowedBuffer &buf_) : op(op_), buf(buf_), len(buf.size()) {}
-  OpContext(Op op_, BorrowedBuffer &buf_, size_t len_) : op(op_), buf(buf_), len(len_) {}
+  OpContext(Op op_, BufferBase &buf_) : op(op_), buf(buf_), len(buf.size()) {}
+  OpContext(Op op_, BufferBase &buf_, size_t len_) : op(op_), buf(buf_), len(len_) {}
 };
 
 template <Rpc Rpc>
