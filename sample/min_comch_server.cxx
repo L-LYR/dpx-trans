@@ -163,7 +163,7 @@ int main() {
   doca_check(doca_buf_pool_start(pool));
 
   doca_check(doca_buf_pool_buf_alloc(pool, &send_buf));
-  memset(buffer, 'C', piece_len);
+  memset(buffer, 'C', piece_len / 2);
   doca_check(doca_buf_set_data_len(send_buf, piece_len));
 
   doca_check(doca_buf_pool_buf_alloc(pool, &recv_buf));
