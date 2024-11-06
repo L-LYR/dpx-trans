@@ -42,6 +42,8 @@ class Endpoint : public EndpointBase {
     auto recv_queue_size = std::min(caps.ctrl_path.max_recv_queue_size, (uint32_t)buffers.n_elements());
     auto msg_size = std::min(caps.ctrl_path.max_msg_size, (uint32_t)buffers.piece_size());
 
+    INFO("Ctrl path recv_queue_size: {}, msg_size: {}", recv_queue_size, msg_size);
+
     doca_check(doca_pe_create(&cp_pe));
     if constexpr (side == Side::ServerSide) {
       doca_check(doca_comch_server_create(dev.dev, dev.rep, name.data(), &s));
@@ -99,6 +101,18 @@ class Endpoint : public EndpointBase {
   op_res_future_t post_recv(OpContext &ctx) {
     doca_comch_consumer_task_post_recv *task = nullptr;
     auto &buf = static_cast<doca::BorrowedBuffer &>(ctx.buf);
+
+    void *head = nullptr;
+    void *data = nullptr;
+    size_t len = 0;
+    size_t data_len = 0;
+    doca_check(doca_buf_get_head(buf.buf, &head));
+    doca_check(doca_buf_get_data(buf.buf, &data));
+    doca_check(doca_buf_get_len(buf.buf, &len));
+    doca_check(doca_buf_get_data_len(buf.buf, &data_len));
+    DEBUG("{} {} {} {} {} {} {} {}", (void *)&ctx, (void *)buf.base, buf.len, head, len, data, data_len,
+          remote_consumer_id);
+
     doca_check(doca_comch_consumer_task_post_recv_alloc_init(con, buf.buf, &task));
     doca_task_set_user_data(doca_comch_consumer_task_post_recv_as_task(task), doca_data(&ctx));
     doca_check(doca_task_submit(doca_comch_consumer_task_post_recv_as_task(task)));
@@ -122,7 +136,7 @@ class Endpoint : public EndpointBase {
           remote_consumer_id);
 
     doca_check(doca_comch_producer_task_send_alloc_init(pro, buf.buf, nullptr, 0, remote_consumer_id, &task));
-    // doca_task_set_user_data(doca_comch_producer_task_send_as_task(task), doca_data(&ctx));
+    doca_task_set_user_data(doca_comch_producer_task_send_as_task(task), doca_data(&ctx));
     doca_check(doca_task_submit(doca_comch_producer_task_send_as_task(task)));
     return ctx.op_res.get_future();
   }
@@ -150,16 +164,6 @@ class Endpoint : public EndpointBase {
   void prepare() {
     assert(conn != nullptr);
     {
-      doca_check(doca_comch_producer_create(conn, &pro));
-      auto ctx = doca_comch_producer_as_ctx(pro);
-      doca_check(doca_pe_connect_ctx(cp_pe, ctx));
-      doca_check(doca_ctx_set_state_changed_cb(ctx, producer_state_change_cb));
-      doca_check(doca_comch_producer_task_send_set_conf(pro, post_send_cb<CompCbType::OK>,
-                                                        post_send_cb<CompCbType::ERROR>, buffers.n_elements()));
-      doca_check(doca_ctx_set_user_data(ctx, doca_data(this)));
-      doca_check(doca_ctx_start(ctx));
-    }
-    {
       doca_check(doca_comch_consumer_create(conn, bulk_buffers.mmap, &con));
       auto ctx = doca_comch_consumer_as_ctx(con);
       doca_check(doca_pe_connect_ctx(cp_pe, ctx));
@@ -169,7 +173,16 @@ class Endpoint : public EndpointBase {
       doca_check(doca_ctx_set_user_data(ctx, doca_data(this)));
       doca_check_ext(doca_ctx_start(ctx), DOCA_ERROR_IN_PROGRESS);
     }
-
+    {
+      doca_check(doca_comch_producer_create(conn, &pro));
+      auto ctx = doca_comch_producer_as_ctx(pro);
+      doca_check(doca_pe_connect_ctx(cp_pe, ctx));
+      doca_check(doca_ctx_set_state_changed_cb(ctx, producer_state_change_cb));
+      doca_check(doca_comch_producer_task_send_set_conf(pro, post_send_cb<CompCbType::OK>,
+                                                        post_send_cb<CompCbType::ERROR>, buffers.n_elements()));
+      doca_check(doca_ctx_set_user_data(ctx, doca_data(this)));
+      doca_check(doca_ctx_start(ctx));
+    }
     // doca_check(doca_comch_connection_set_user_data(conn, doca_data(this)));
     EndpointBase::prepare();
   }

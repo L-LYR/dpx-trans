@@ -69,24 +69,20 @@ ComchCapability Device::probe_comch_params() {
     doca_check(doca_comch_cap_get_max_send_tasks(dev_info, &caps.ctrl_path.max_send_tasks));
     doca_check(doca_comch_cap_get_max_recv_queue_size(dev_info, &caps.ctrl_path.max_recv_queue_size));
   }
-  caps.data_path.is_supported = doca_comch_producer_cap_is_supported(dev_info) == DOCA_SUCCESS &&
-                                doca_comch_consumer_cap_is_supported(dev_info) == DOCA_SUCCESS;
-  if (caps.data_path.is_supported) {
-    caps.data_path.producer.is_supported = doca_comch_producer_cap_is_supported(dev_info) == DOCA_SUCCESS;
-    if (caps.data_path.producer.is_supported) {
-      doca_check(doca_comch_producer_cap_get_max_producers(dev_info, &caps.data_path.producer.max_number));
-      doca_check(doca_comch_producer_cap_get_max_num_tasks(dev_info, &caps.data_path.producer.max_num_tasks));
-      doca_check(doca_comch_producer_cap_get_max_buf_size(dev_info, &caps.data_path.producer.max_buf_size));
-      doca_check(doca_comch_producer_cap_get_max_buf_list_len(dev_info, &caps.data_path.producer.max_buf_list_len));
-    }
-    caps.data_path.consumer.is_supported = doca_comch_consumer_cap_is_supported(dev_info) == DOCA_SUCCESS;
-    if (caps.data_path.consumer.is_supported) {
-      doca_check(doca_comch_consumer_cap_get_max_consumers(dev_info, &caps.data_path.consumer.max_number));
-      doca_check(doca_comch_consumer_cap_get_max_imm_data_len(dev_info, &caps.data_path.consumer.max_imm_data_len));
-      doca_check(doca_comch_consumer_cap_get_max_buf_list_len(dev_info, &caps.data_path.consumer.max_buf_list_len));
-      doca_check(doca_comch_consumer_cap_get_max_buf_size(dev_info, &caps.data_path.consumer.max_buf_size));
-      doca_check(doca_comch_consumer_cap_get_max_num_tasks(dev_info, &caps.data_path.consumer.max_num_tasks));
-    }
+  caps.data_path.producer.is_supported = doca_comch_producer_cap_is_supported(dev_info) == DOCA_SUCCESS;
+  if (caps.data_path.producer.is_supported) {
+    doca_check(doca_comch_producer_cap_get_max_producers(dev_info, &caps.data_path.producer.max_number));
+    doca_check(doca_comch_producer_cap_get_max_num_tasks(dev_info, &caps.data_path.producer.max_num_tasks));
+    doca_check(doca_comch_producer_cap_get_max_buf_size(dev_info, &caps.data_path.producer.max_buf_size));
+    doca_check(doca_comch_producer_cap_get_max_buf_list_len(dev_info, &caps.data_path.producer.max_buf_list_len));
+  }
+  caps.data_path.consumer.is_supported = doca_comch_consumer_cap_is_supported(dev_info) == DOCA_SUCCESS;
+  if (caps.data_path.consumer.is_supported) {
+    doca_check(doca_comch_consumer_cap_get_max_consumers(dev_info, &caps.data_path.consumer.max_number));
+    doca_check(doca_comch_consumer_cap_get_max_imm_data_len(dev_info, &caps.data_path.consumer.max_imm_data_len));
+    doca_check(doca_comch_consumer_cap_get_max_buf_list_len(dev_info, &caps.data_path.consumer.max_buf_list_len));
+    doca_check(doca_comch_consumer_cap_get_max_buf_size(dev_info, &caps.data_path.consumer.max_buf_size));
+    doca_check(doca_comch_consumer_cap_get_max_num_tasks(dev_info, &caps.data_path.consumer.max_num_tasks));
   }
   return caps;
 }

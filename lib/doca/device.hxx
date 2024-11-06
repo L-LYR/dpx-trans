@@ -30,7 +30,6 @@ struct ComchCapability {
     uint32_t max_recv_queue_size = -1;
   } ctrl_path;
   struct {
-    bool is_supported = false;
     struct {
       bool is_supported = false;
       uint32_t max_number = -1;
