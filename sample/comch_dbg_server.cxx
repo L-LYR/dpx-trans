@@ -42,7 +42,7 @@ uint32_t recv_queue_size = 0;
 
 template <typename Fn>
 void poll_until(Fn &&predictor) {
-  while (!predictor) {
+  while (!predictor()) {
     doca_pe_progress(pe);
   }
 };
