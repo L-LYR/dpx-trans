@@ -1,4 +1,5 @@
 #include <doca_buf.h>
+#include <doca_buf_inventory.h>
 #include <doca_buf_pool.h>
 #include <doca_comch.h>
 #include <doca_comch_consumer.h>
@@ -8,7 +9,11 @@
 #include <doca_mmap.h>
 #include <doca_pe.h>
 
+#include <thread>
+
 #include "doca/check.hxx"
+
+using namespace std::chrono_literals;
 
 std::string pci_addr = "0000:99:00.0";
 doca_dev *dev = nullptr;
@@ -95,10 +100,8 @@ int main() {
   doca_check(doca_buf_pool_start(pool));
 
   doca_check(doca_buf_pool_buf_alloc(pool, &send_buf));
-  doca_check(doca_buf_set_data_len(send_buf, piece_len));
 
   doca_check(doca_buf_pool_buf_alloc(pool, &recv_buf));
-  doca_check(doca_buf_set_data_len(recv_buf, piece_len));
 
   doca_check(doca_pe_create(&pe));
 
@@ -138,6 +141,8 @@ int main() {
   poll_until([]() { return con_running; });
 
   poll_until([]() { return remote_consumer_id != 0; });
+
+  std::this_thread::sleep_for(5s);
 
   {
     doca_comch_consumer_task_post_recv *task;
@@ -230,6 +235,10 @@ void post_send_err_cb(doca_comch_producer_task_send *task, doca_data, doca_data)
 
 void post_recv_cb(doca_comch_consumer_task_post_recv *task, doca_data, doca_data) {
   recv = true;
+  auto buf = doca_comch_consumer_task_post_recv_get_buf(task);
+  void *data = nullptr;
+  doca_check(doca_buf_get_data(buf, &data));
+  std::cout << (char *)data << std::endl;
   doca_task_free(doca_comch_consumer_task_post_recv_as_task(task));
 }
 

@@ -116,10 +116,8 @@ int main() {
   doca_check(doca_buf_pool_start(pool));
 
   doca_check(doca_buf_pool_buf_alloc(pool, &send_buf));
-  doca_check(doca_buf_set_data_len(send_buf, piece_len));
 
   doca_check(doca_buf_pool_buf_alloc(pool, &recv_buf));
-  doca_check(doca_buf_set_data_len(recv_buf, piece_len));
 
   doca_check(doca_pe_create(&pe));
 
@@ -265,6 +263,10 @@ void post_send_err_cb(doca_comch_producer_task_send *task, doca_data, doca_data)
 
 void post_recv_cb(doca_comch_consumer_task_post_recv *task, doca_data, doca_data) {
   recv = true;
+  auto buf = doca_comch_consumer_task_post_recv_get_buf(task);
+  void *data = nullptr;
+  doca_check(doca_buf_get_data(buf, &data));
+  std::cout << (char *)data << std::endl;
   doca_task_free(doca_comch_consumer_task_post_recv_as_task(task));
 }
 
