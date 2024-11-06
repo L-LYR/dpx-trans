@@ -45,6 +45,10 @@ class ConnectionHandle {
   }
 
   void wait_for_disconnect() {
+    progress_all_until([](Endpoint& e) { return e.remote_consumer_id == 0; });
+    for_each_endpoint([](Endpoint& e) { e.stop(); });
+    progress_all_until([](Endpoint& e) { return e.producer_stopped() && e.consumer_stopped() && e.conn == nullptr; });
+    for_each_endpoint([](Endpoint& e) { e.shutdown(); });
     progress_all_until([](Endpoint& e) { return e.exited(); });
   }
 
@@ -58,7 +62,9 @@ class ConnectionHandle {
 
   void disconnect() {
     for_each_endpoint([](Endpoint& e) { e.stop(); });
-    progress_all_until([](Endpoint& e) { return e.exited(); });
+    progress_all_until(
+        [](Endpoint& e) { return e.consumer_stopped() && e.producer_stopped() && e.remote_consumer_id == 0; });
+    for_each_endpoint([](Endpoint& e) { e.shutdown(); });
   }
 
  private:
