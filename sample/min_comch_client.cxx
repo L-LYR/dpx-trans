@@ -92,8 +92,8 @@ void poll_until(fn &&predictor) {
   }
 };
 
-bool s_running = false;
-bool s_stop = false;
+bool c_running = false;
+bool c_stop = false;
 
 doca_comch_producer *pro = nullptr;
 bool pro_running = false;
@@ -165,7 +165,7 @@ int main() {
   doca_check(doca_ctx_set_state_changed_cb(c_ctx, server_state_change_cb));
   doca_check_ext(doca_ctx_start(c_ctx), DOCA_ERROR_IN_PROGRESS);
 
-  poll_until([]() { return s_running; });
+  poll_until([]() { return c_running; });
   doca_check(doca_comch_client_get_connection(c, &conn));
 
   doca_check(doca_comch_producer_create(conn, &pro));
@@ -212,7 +212,7 @@ int main() {
   doca_check(doca_comch_consumer_destroy(con));
 
   doca_check_ext(doca_ctx_stop(c_ctx), DOCA_ERROR_IN_PROGRESS);
-  poll_until([]() { return s_stop; });
+  poll_until([]() { return c_stop; });
 
   doca_check(doca_comch_client_destroy(c));
 
@@ -235,12 +235,12 @@ int main() {
 void server_state_change_cb(const doca_data, doca_ctx *, doca_ctx_states, doca_ctx_states next_state) {
   switch (next_state) {
     case DOCA_CTX_STATE_IDLE: {
-      s_stop = true;
+      c_stop = true;
     } break;
     case DOCA_CTX_STATE_STARTING: {
     } break;
     case DOCA_CTX_STATE_RUNNING: {
-      s_running = true;
+      c_running = true;
     } break;
     case DOCA_CTX_STATE_STOPPING: {
     } break;
