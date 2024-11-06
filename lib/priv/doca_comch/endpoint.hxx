@@ -263,6 +263,9 @@ class Endpoint : public EndpointBase {
     auto e = reinterpret_cast<Endpoint *>(get_user_data_from_connection(conn));
     if (remote_consumer_id == e->remote_consumer_id) {
       e->remote_consumer_id = 0;
+      if constexpr (side == Side::ServerSide) {
+        e->stop();
+      }
     } else {
       WARN("Only support one connection, ignore");
     }
