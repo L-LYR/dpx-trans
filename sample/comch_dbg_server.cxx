@@ -67,13 +67,13 @@ void new_consumer_event_cb(doca_comch_event_consumer *, doca_comch_connection *,
 void expired_consumer_event_cb(doca_comch_event_consumer *, doca_comch_connection *, uint32_t);
 void task_completion_cb(doca_comch_task_send *, doca_data, doca_data);
 void task_error_cb(doca_comch_task_send *, doca_data, doca_data);
-void recv_event_cb(struct doca_comch_event_msg_recv *, uint8_t *, uint32_t, struct doca_comch_connection *);
+void recv_event_cb(doca_comch_event_msg_recv *, uint8_t *, uint32_t, doca_comch_connection *);
 void producer_state_change_cb(const doca_data, doca_ctx *, doca_ctx_states, doca_ctx_states);
-void post_send_cb(struct doca_comch_producer_task_send *, union doca_data, union doca_data);
-void post_send_err_cb(struct doca_comch_producer_task_send *, union doca_data, union doca_data);
+void post_send_cb(doca_comch_producer_task_send *, doca_data, doca_data);
+void post_send_err_cb(doca_comch_producer_task_send *, doca_data, doca_data);
 void consumer_state_change_cb(const doca_data, doca_ctx *, doca_ctx_states, doca_ctx_states);
-void post_recv_cb(struct doca_comch_consumer_task_post_recv *, union doca_data, union doca_data);
-void post_recv_err_cb(struct doca_comch_consumer_task_post_recv *, union doca_data, union doca_data);
+void post_recv_cb(doca_comch_consumer_task_post_recv *, doca_data, doca_data);
+void post_recv_err_cb(doca_comch_consumer_task_post_recv *, doca_data, doca_data);
 
 int main() {
   doca_check(doca_devinfo_create_list(&dev_list, &n_devs));
@@ -232,21 +232,21 @@ void task_error_cb(doca_comch_task_send *task, doca_data, doca_data) {
   doca_task_free(doca_comch_task_send_as_task(task));
 }
 
-void recv_event_cb(struct doca_comch_event_msg_recv *, uint8_t *, uint32_t, struct doca_comch_connection *) {}
+void recv_event_cb(doca_comch_event_msg_recv *, uint8_t *, uint32_t, doca_comch_connection *) {}
 
-void post_send_cb(struct doca_comch_producer_task_send *task, union doca_data, union doca_data) {
+void post_send_cb(doca_comch_producer_task_send *task, doca_data, doca_data) {
   doca_task_free(doca_comch_producer_task_send_as_task(task));
 }
 
-void post_send_err_cb(struct doca_comch_producer_task_send *task, union doca_data, union doca_data) {
+void post_send_err_cb(doca_comch_producer_task_send *task, doca_data, doca_data) {
   doca_task_free(doca_comch_producer_task_send_as_task(task));
 }
 
-void post_recv_cb(struct doca_comch_consumer_task_post_recv *task, union doca_data, union doca_data) {
+void post_recv_cb(doca_comch_consumer_task_post_recv *task, doca_data, doca_data) {
   doca_task_free(doca_comch_consumer_task_post_recv_as_task(task));
 }
 
-void post_recv_err_cb(struct doca_comch_consumer_task_post_recv *task, union doca_data, union doca_data) {
+void post_recv_err_cb(doca_comch_consumer_task_post_recv *task, doca_data, doca_data) {
   doca_task_free(doca_comch_consumer_task_post_recv_as_task(task));
 }
 
