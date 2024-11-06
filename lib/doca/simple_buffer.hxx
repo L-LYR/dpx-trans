@@ -45,6 +45,7 @@ class BorrowedBuffer : public BufferBase {
   explicit BorrowedBuffer(doca_buf* buf_) : buf(buf_) {
     doca_check(doca_buf_get_data(buf, reinterpret_cast<void**>(&base)));
     doca_check(doca_buf_get_len(buf, &len));
+    DEBUG("BufferBase at {} with length {}", (void*)base, len);
   }
   ~BorrowedBuffer() = default;
 
