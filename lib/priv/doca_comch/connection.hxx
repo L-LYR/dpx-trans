@@ -37,24 +37,35 @@ class ConnectionHandle {
   }
 
   void listen_and_accept() {
-    progress_all_until([](Endpoint& e) { return e.conn != nullptr; });
+    progress_all_until([](Endpoint& e) { return e.server_running() && e.conn != nullptr; });
     for_each_endpoint([](Endpoint& e) { e.prepare(); });
-    progress_all_until([](Endpoint& e) { return e.running(); });
+    progress_all_until(
+        [](Endpoint& e) { return e.producer_running() && e.consumer_running() && e.remote_consumer_id != 0; });
+    for_each_endpoint([](Endpoint& e) { e.run(); });
   }
 
   void wait_for_disconnect() {
-    progress_all_until([](Endpoint& e) { return e.exited(); });
+    progress_all_until([](Endpoint& e) {
+      return e.producer_stopped() && e.consumer_stopped() && e.remote_consumer_id == 0 && e.conn == nullptr;
+    });
+    for_each_endpoint([](Endpoint& e) { e.shutdown(); });
+    progress_all_until([](Endpoint& e) { return e.server_stopped() && e.exited(); });
   }
 
   void connect() {
-    progress_all_until([](Endpoint& e) { return e.conn != nullptr; });
+    progress_all_until([](Endpoint& e) { return e.client_running(); });
     for_each_endpoint([](Endpoint& e) { e.prepare(); });
-    progress_all_until([](Endpoint& e) { return e.running(); });
+    progress_all_until(
+        [](Endpoint& e) { return e.producer_running() && e.consumer_running() && e.remote_consumer_id != 0; });
+    for_each_endpoint([](Endpoint& e) { e.run(); });
   }
 
   void disconnect() {
     for_each_endpoint([](Endpoint& e) { e.stop(); });
-    progress_all_until([](Endpoint& e) { return e.exited(); });
+    progress_all_until(
+        [](Endpoint& e) { return e.consumer_stopped() && e.producer_stopped() && e.remote_consumer_id == 0; });
+    for_each_endpoint([](Endpoint& e) { e.shutdown(); });
+    progress_all_until([](Endpoint& e) { return e.client_stopped() && e.exited(); });
   }
 
  private:

@@ -17,7 +17,9 @@ concept ByteView = zpp::bits::concepts::byte_view<BufferType>;
 class BufferBase {
  public:
   BufferBase() = default;
-  BufferBase(uint8_t *base_, size_t len_) : base(base_), len(len_) {}
+  BufferBase(uint8_t *base_, size_t len_) : base(base_), len(len_) {
+    DEBUG("BufferBase at {} with length {}", (void *)base, len);
+  }
   ~BufferBase() = default;
 
   // for zpp_bits inner traits
@@ -48,9 +50,7 @@ class BufferBase {
 
 class OwnedBuffer : public BufferBase, Noncopyable, Nonmovable {
  public:
-  explicit OwnedBuffer(size_t size) : BufferBase(new uint8_t[size], size) {
-    DEBUG("OwnedBuffer at {} with length {}", (void *)base, len);
-  }
+  explicit OwnedBuffer(size_t size) : BufferBase(new uint8_t[size], size) {}
   ~OwnedBuffer() {
     if (base != nullptr) {
       delete[] base;

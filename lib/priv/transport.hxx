@@ -72,7 +72,7 @@ class Transport {
         cp_conn_handle(config.conn_param),
         send_bufs(dev, config.queue_depth, config.max_rpc_msg_size),
         recv_bufs(dev, config.queue_depth, config.max_rpc_msg_size),
-        cp_e(dev, recv_bufs.buffers(), send_bufs.buffers(), config.conn_param.name) {
+        cp_e(dev, send_bufs.buffers(), recv_bufs.buffers(), config.conn_param.name) {
     establish_connections();
   }
 

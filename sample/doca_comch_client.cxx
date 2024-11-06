@@ -35,6 +35,8 @@ int main(int argc, char* argv[]) {
   doca::Device dev(args::get(dev_pci_address));
   Transport<Backend::DOCA_Comch, Side::ClientSide, EchoRpc> t(dev, c);
 
+  std::this_thread::sleep_for(5s);
+
   auto call_fn = [&]() {
     for (auto i = 0; i < 10000; i++) {
       auto echo_resp = t.call<EchoRpc>(payload_4k);
