@@ -28,8 +28,10 @@ doca_mmap *mmap = nullptr;
 doca_buf_pool *pool = nullptr;
 
 doca_buf *send_buf = nullptr;
+bool send = false;
 
 doca_buf *recv_buf = nullptr;
+bool recv = false;
 
 doca_pe *pe = nullptr;
 
@@ -160,6 +162,21 @@ int main() {
 
   poll_until([]() { return remote_consumer_id != 0; });
 
+  {
+    doca_comch_consumer_task_post_recv *task;
+    memset(buffer, 'A', piece_len);
+    doca_check(doca_comch_consumer_task_post_recv_alloc_init(con, recv_buf, &task));
+    doca_check(doca_task_submit(doca_comch_consumer_task_post_recv_as_task(task)));
+  }
+  poll_until([]() { return recv; });
+  {
+    doca_comch_producer_task_send *task;
+    memset(buffer, 'B', piece_len);
+    doca_check(doca_comch_producer_task_send_alloc_init(pro, send_buf, nullptr, 0, remote_consumer_id, &task));
+    doca_check(doca_task_submit(doca_comch_producer_task_send_as_task(task)));
+  }
+  poll_until([]() { return send; });
+
   doca_check(doca_ctx_stop(pro_ctx));
   poll_until([]() { return pro_stop; });
   doca_check(doca_comch_producer_destroy(pro));
@@ -237,18 +254,22 @@ void task_error_cb(doca_comch_task_send *task, doca_data, doca_data) {
 void recv_event_cb(doca_comch_event_msg_recv *, uint8_t *, uint32_t, doca_comch_connection *) {}
 
 void post_send_cb(doca_comch_producer_task_send *task, doca_data, doca_data) {
+  send = true;
   doca_task_free(doca_comch_producer_task_send_as_task(task));
 }
 
 void post_send_err_cb(doca_comch_producer_task_send *task, doca_data, doca_data) {
+  send = true;
   doca_task_free(doca_comch_producer_task_send_as_task(task));
 }
 
 void post_recv_cb(doca_comch_consumer_task_post_recv *task, doca_data, doca_data) {
+  recv = true;
   doca_task_free(doca_comch_consumer_task_post_recv_as_task(task));
 }
 
 void post_recv_err_cb(doca_comch_consumer_task_post_recv *task, doca_data, doca_data) {
+  recv = true;
   doca_task_free(doca_comch_consumer_task_post_recv_as_task(task));
 }
 
