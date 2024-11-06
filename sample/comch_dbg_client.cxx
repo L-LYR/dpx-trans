@@ -100,21 +100,11 @@ int main() {
   doca_check(doca_buf_pool_start(pool));
 
   doca_check(doca_buf_pool_buf_alloc(pool, &send_buf));
-  void *head = nullptr;
-  void *data = nullptr;
-  size_t len = 0;
-  size_t data_len = 0;
-  doca_check(doca_buf_get_head(send_buf, &head));
-  doca_check(doca_buf_get_len(send_buf, &len));
-  doca_check(doca_buf_get_data(send_buf, &data));
-  doca_check(doca_buf_get_data_len(send_buf, &data_len));
-  std::cout << (void *)head << " " << (void *)data << " " << len << " " << data_len << std::endl;
   memset(buffer, 'A', piece_len);
   doca_check(doca_buf_set_data_len(send_buf, piece_len));
 
   memset(&buffer[piece_len], 'B', piece_len);
   doca_check(doca_buf_pool_buf_alloc(pool, &recv_buf));
-  // doca_check(doca_buf_set_data_len(recv_buf, 4000));
 
   doca_check(doca_pe_create(&pe));
 
