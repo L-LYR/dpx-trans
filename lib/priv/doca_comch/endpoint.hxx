@@ -33,7 +33,7 @@ class Endpoint : public EndpointBase {
     doca_check(doca_comch_cap_get_max_recv_queue_size(doca_dev_as_devinfo(dev.dev), &dev_recv_queue_size));
     doca_check(doca_comch_producer_cap_get_max_buf_size(doca_dev_as_devinfo(dev.dev), &dev_dp_max_msg_size));
     doca_check(doca_comch_producer_cap_get_max_num_tasks(doca_dev_as_devinfo(dev.dev), &dev_dp_recv_queue_size));
-    TRACE("{} {}", dev_dp_max_msg_size, dev_dp_recv_queue_size);
+    DEBUG("{} {}", dev_dp_max_msg_size, dev_dp_recv_queue_size);
 
     if (dev_max_msg_size < buffers.piece_size()) {
       die("Device max rpc message size: {}", dev_max_msg_size);
@@ -43,7 +43,7 @@ class Endpoint : public EndpointBase {
     }
     dev_recv_queue_size = std::min(static_cast<uint32_t>(buffers.n_elements()), dev_recv_queue_size);
     dev_max_msg_size = std::min(static_cast<uint32_t>(buffers.piece_size()), dev_max_msg_size);
-    TRACE("queue depth {}, msg size {}", dev_recv_queue_size, dev_max_msg_size);
+    DEBUG("queue depth {}, msg size {}", dev_recv_queue_size, dev_max_msg_size);
 
     doca_check(doca_pe_create(&cp_pe));
     if constexpr (side == Side::ServerSide) {
@@ -99,34 +99,34 @@ class Endpoint : public EndpointBase {
 
   bool progress() { return doca_pe_progress(cp_pe); }
 
-  op_res_future_t dp_post_recv(OpContext &ctx) {
+  op_res_future_t post_recv(OpContext &ctx) {
     doca_comch_consumer_task_post_recv *task = nullptr;
     auto &buf = static_cast<doca::BorrowedBuffer &>(ctx.buf);
-    TRACE("{}", (void *)buf.buf);
+    DEBUG("{}", (void *)buf.buf);
     doca_check(doca_comch_consumer_task_post_recv_alloc_init(con, buf.buf, &task));
     doca_task_set_user_data(doca_comch_consumer_task_post_recv_as_task(task), doca_data(&ctx));
     doca_check(doca_task_submit(doca_comch_consumer_task_post_recv_as_task(task)));
     return ctx.op_res.get_future();
   }
 
-  op_res_future_t dp_post_send(OpContext &ctx) {
+  op_res_future_t post_send(OpContext &ctx) {
     doca_comch_producer_task_send *task = nullptr;
     auto &buf = static_cast<doca::BorrowedBuffer &>(ctx.buf);
-    TRACE("pro {} {}", (void *)pro, (void *)buf.buf);
+    DEBUG("pro {} {}", (void *)pro, (void *)buf.buf);
     doca_check(doca_comch_producer_task_send_alloc_init(pro, buf.buf, reinterpret_cast<uint8_t *>(ctx.len),
                                                         sizeof(ctx.len), remote_consumer_id, &task));
     doca_task_set_user_data(doca_comch_producer_task_send_as_task(task), doca_data(&ctx));
-    TRACE("{}", (void *)task);
+    DEBUG("{}", (void *)task);
     doca_check(doca_task_try_submit(doca_comch_producer_task_send_as_task(task)));
     return ctx.op_res.get_future();
   }
 
-  op_res_future_t post_recv(OpContext &ctx) {
+  op_res_future_t cp_post_recv(OpContext &ctx) {
     recv_ops_q.emplace_back(ctx);
     return ctx.op_res.get_future();
   }
 
-  op_res_future_t post_send(OpContext &ctx) {
+  op_res_future_t cp_post_send(OpContext &ctx) {
     doca_comch_task_send *task = nullptr;
     if constexpr (side == Side::ServerSide) {
       doca_check(doca_comch_server_task_send_alloc_init(s, conn, ctx.buf.data(), ctx.len, &task));
@@ -154,7 +154,7 @@ class Endpoint : public EndpointBase {
       doca_check(doca_ctx_start(ctx));
     }
     {
-      doca_check(doca_comch_consumer_create(conn, bulk_buffers.mmap(), &con));
+      doca_check(doca_comch_consumer_create(conn, bulk_buffers.mmap, &con));
       auto ctx = doca_comch_consumer_as_ctx(con);
       doca_check(doca_pe_connect_ctx(cp_pe, ctx));
       doca_check(doca_ctx_set_state_changed_cb(ctx, consumer_state_change_cb));
@@ -178,7 +178,7 @@ class Endpoint : public EndpointBase {
   static void state_change_cb(const doca_data ctx_user_data, doca_ctx *, doca_ctx_states prev_state,
                               doca_ctx_states next_state) {
     auto e = reinterpret_cast<Endpoint *>(ctx_user_data.ptr);
-    TRACE("DOCA Comch {} {} state change: {} -> {}", e->name, side, prev_state, next_state);
+    DEBUG("DOCA Comch {} {} state change: {} -> {}", e->name, side, prev_state, next_state);
     switch (next_state) {
       case DOCA_CTX_STATE_IDLE: {
         e->shutdown();  // must progress to this state
@@ -203,7 +203,7 @@ class Endpoint : public EndpointBase {
     auto e = reinterpret_cast<Endpoint *>(get_user_data_from_connection(conn));
     if (e->conn == nullptr) {
       e->conn = conn;
-      TRACE("Establish connection of {}", e->name);
+      DEBUG("Establish connection of {}", e->name);
     } else {
       WARN("Only support one connection, ignored");
     }
@@ -221,7 +221,7 @@ class Endpoint : public EndpointBase {
       for (OpContext &op_ctx : e->recv_ops_q) {
         op_ctx.op_res.set_value(0);
       }  // notify all workers
-      TRACE("Disconnection of {}", e->name);
+      DEBUG("Disconnection of {}", e->name);
     } else {
       WARN("Only support one connection, ignore");
     }
@@ -323,7 +323,7 @@ class Endpoint : public EndpointBase {
   static void producer_state_change_cb(const doca_data ctx_user_data, doca_ctx *, doca_ctx_states prev_state,
                                        doca_ctx_states next_state) {
     auto e = reinterpret_cast<Endpoint *>(ctx_user_data.ptr);
-    TRACE("DOCA Comch {} {} producer state change: {} -> {}", e->name, side, prev_state, next_state);
+    DEBUG("DOCA Comch {} {} producer state change: {} -> {}", e->name, side, prev_state, next_state);
     switch (next_state) {
       case DOCA_CTX_STATE_IDLE: {
         doca_check(doca_comch_producer_destroy(e->pro));
@@ -341,7 +341,7 @@ class Endpoint : public EndpointBase {
   static void consumer_state_change_cb(const doca_data ctx_user_data, doca_ctx *, doca_ctx_states prev_state,
                                        doca_ctx_states next_state) {
     auto e = reinterpret_cast<Endpoint *>(ctx_user_data.ptr);
-    TRACE("DOCA Comch {} {} consumer state change: {} -> {}", e->name, side, prev_state, next_state);
+    DEBUG("DOCA Comch {} {} consumer state change: {} -> {}", e->name, side, prev_state, next_state);
     switch (next_state) {
       case DOCA_CTX_STATE_IDLE: {
         doca_check(doca_comch_consumer_destroy(e->con));

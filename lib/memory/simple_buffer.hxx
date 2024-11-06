@@ -8,50 +8,20 @@
 #include <span>
 
 #include "util/logger.hxx"
+#include "util/noncopyable.hxx"
+#include "util/nonmovable.hxx"
 
 template <typename BufferType>
 concept ByteView = zpp::bits::concepts::byte_view<BufferType>;
 
-template <bool own>
 class BufferBase {
  public:
+  BufferBase() = default;
+  BufferBase(uint8_t *base_, size_t len_) : base(base_), len(len_) {}
+  ~BufferBase() = default;
+
   // for zpp_bits inner traits
   using value_type = uint8_t;
-
-  BufferBase() {}
-
-  BufferBase(uint8_t *buf_, size_t len_)
-    requires(!own)
-      : base(buf_), len(len_) {
-    clear();
-  }
-  explicit BufferBase(size_t len_)
-    requires(own)
-      : base(new uint8_t[len_]), len(len_) {
-    TRACE("{} {}", (void *)base, len);
-    clear();
-  }
-
-  BufferBase(const BufferBase &other)
-    requires(own)
-  = delete;
-  BufferBase &operator=(const BufferBase &other)
-    requires(own)
-  = delete;
-  BufferBase(BufferBase &&other)
-    requires(own)
-  = delete;
-  BufferBase &operator=(BufferBase &&other)
-    requires(own)
-  = delete;
-
-  ~BufferBase() {
-    if constexpr (own) {
-      if (base != nullptr) {
-        delete[] base;
-      }
-    }
-  }
 
   uint8_t *data() { return base; }
   const uint8_t *data() const { return base; }
@@ -76,35 +46,40 @@ class BufferBase {
   size_t len = -1;
 };
 
-using OwnedBuffer = BufferBase<true>;
-using BorrowedBuffer = BufferBase<false>;
+class OwnedBuffer : public BufferBase, Noncopyable, Nonmovable {
+ public:
+  explicit OwnedBuffer(size_t size) : BufferBase(new uint8_t[size], size) {
+    DEBUG("OwnedBuffer at {} with length {}", (void *)base, len);
+  }
+  ~OwnedBuffer() {
+    if (base != nullptr) {
+      delete[] base;
+    }
+  }
+};
+
+class BorrowedBuffer : public BufferBase {
+ public:
+  BorrowedBuffer(uint8_t *base, size_t len) : BufferBase(base, len) {}
+  ~BorrowedBuffer() = default;
+};
 
 static_assert(ByteView<OwnedBuffer>, "Buffer is not a valid byte view");
 static_assert(ByteView<BorrowedBuffer>, "Buffer is not a valid byte view");
 
 namespace naive {
 
-template <typename Buffer>
-class BuffersBase : public OwnedBuffer {
+class Buffers : public OwnedBuffer {
  public:
-  using BufferType = Buffer;
+  using BufferType = BorrowedBuffer;
 
-  BuffersBase(size_t n, size_t piece_len_)
-    requires(!std::is_constructible_v<Buffer, uint8_t *, size_t>)
-      : OwnedBuffer(piece_len_ * n), piece_len(piece_len_) {}
-
-  BuffersBase(size_t n, size_t piece_len_)
-    requires(std::is_constructible_v<Buffer, uint8_t *, size_t>)
-      : OwnedBuffer(piece_len_ * n), piece_len(piece_len_) {
-    uint8_t *p = base;
-    for (auto i = 0uz; i < n; ++i) {
-      TRACE("{} {}", (void *)p, piece_len);
+  Buffers(size_t n, size_t piece_len_) : OwnedBuffer(piece_len_ * n), piece_len(piece_len_) {
+    for (auto p = base; p < base + len; p += piece_len) {
       handles.emplace_back(p, piece_len);
-      p += piece_len;
     }
   }
 
-  ~BuffersBase() = default;
+  ~Buffers() = default;
 
   size_t n_elements() const { return handles.size(); }
   size_t piece_size() const { return piece_len; }
@@ -115,7 +90,5 @@ class BuffersBase : public OwnedBuffer {
   size_t piece_len = -1;
   std::vector<BufferType> handles;
 };
-
-using Buffers = BuffersBase<BorrowedBuffer>;
 
 }  // namespace naive

@@ -22,13 +22,12 @@ using op_res_future_t = boost::fibers::future<int>;
 
 struct OpContext : public ContextBase {
   Op op;
-  BorrowedBuffer &buf;
-
+  BufferBase &buf;
   size_t len = -1;
   op_res_promise_t op_res = {};
 
-  OpContext(Op op_, BorrowedBuffer &buf_) : op(op_), buf(buf_), len(buf.size()) {}
-  OpContext(Op op_, BorrowedBuffer &buf_, size_t len_) : op(op_), buf(buf_), len(len_) {}
+  OpContext(Op op_, BufferBase &buf_) : op(op_), buf(buf_), len(buf.size()) {}
+  OpContext(Op op_, BufferBase &buf_, size_t len_) : op(op_), buf(buf_), len(len_) {}
 };
 
 template <Rpc Rpc>
@@ -80,22 +79,22 @@ class EndpointBase : Noncopyable, Nonmovable {
   void prepare() {
     assert(idle());
     s = Status::Ready;
-    TRACE("Endpoint status change: Idle -> Ready");
+    DEBUG("Endpoint status change: Idle -> Ready");
   }
   void run() {
     assert(ready());
     s = Status::Running;
-    TRACE("Endpoint status change: Ready -> Running");
+    DEBUG("Endpoint status change: Ready -> Running");
   }
   void stop() {
     assert(running());
     s = Status::Stopping;
-    TRACE("Endpoint status change: Running -> Stopped");
+    DEBUG("Endpoint status change: Running -> Stopped");
   }
   void shutdown() {
     assert(stopping());
     s = Status::Exited;
-    TRACE("Endpoint status change: Stopped -> Exited");
+    DEBUG("Endpoint status change: Stopped -> Exited");
   }
 
   std::atomic<Status> s;
