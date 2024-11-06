@@ -21,7 +21,8 @@ class Endpoint;
 
 struct ComchCapability {
   struct {
-    bool is_supported = false;
+    bool client_is_supported = false;
+    bool server_is_supported = false;
     uint32_t max_clients_per_server = -1;
     uint32_t max_name_len = -1;
     uint32_t max_msg_size = -1;
