@@ -191,7 +191,7 @@ class Endpoint : public EndpointBase {
 
   void stop() {
     doca_check(doca_ctx_stop(doca_comch_producer_as_ctx(pro)));
-    doca_check(doca_ctx_stop(doca_comch_consumer_as_ctx(con)));
+    doca_check_ext(doca_ctx_stop(doca_comch_consumer_as_ctx(con)), DOCA_ERROR_IN_PROGRESS);
     EndpointBase::stop();
   }
 
