@@ -38,7 +38,7 @@ int main(int argc, char* argv[]) {
   std::this_thread::sleep_for(5s);
 
   auto call_fn = [&]() {
-    for (auto i = 0; i < 1; i++) {
+    for (auto i = 0; i < 10000; i++) {
       auto echo_resp = t.call<EchoRpc>(payload_4k);
       auto resp = echo_resp.get();
     }
