@@ -162,11 +162,13 @@ int main() {
 
   doca_check(doca_ctx_stop(pro_ctx));
   poll_until([]() { return pro_stop; });
+  doca_check(doca_comch_producer_destroy(pro));
 
   doca_check(doca_ctx_stop(con_ctx));
   poll_until([]() { return con_stop; });
+  doca_check(doca_comch_consumer_destroy(con));
 
-  doca_check(doca_ctx_stop(s_ctx));
+  doca_check_ext(doca_ctx_stop(s_ctx), DOCA_ERROR_IN_PROGRESS);
   poll_until([]() { return s_stop; });
 
   doca_check(doca_comch_server_destroy(s));
