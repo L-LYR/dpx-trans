@@ -326,7 +326,9 @@ class Endpoint : public EndpointBase {
     // auto endpoint = reinterpret_cast<Endpoint *>(ctx_user_data.ptr);
     auto ctx = reinterpret_cast<OpContext *>(task_user_data.ptr);
     DEBUG("One recv done {}", (void *)ctx);
-    ctx->op_res.set_value(ctx->len);
+    size_t data_len = 0;
+    doca_check(doca_buf_get_data_len(doca_comch_consumer_task_post_recv_get_buf(task), &data_len));
+    ctx->op_res.set_value(data_len);
     doca_task_free(doca_comch_consumer_task_post_recv_as_task(task));
   }
 
