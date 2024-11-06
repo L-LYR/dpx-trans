@@ -44,7 +44,7 @@ class BorrowedBuffer : public BufferBase {
  public:
   explicit BorrowedBuffer(doca_buf* buf_) : buf(buf_) {
     doca_check(doca_buf_get_data(buf, reinterpret_cast<void**>(&base)));
-    doca_check(doca_buf_get_data_len(buf, &len));
+    doca_check(doca_buf_get_len(buf, &len));
   }
   ~BorrowedBuffer() = default;
 
