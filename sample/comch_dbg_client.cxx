@@ -56,8 +56,6 @@ bool con_stop = false;
 uint32_t remote_consumer_id = 0;
 
 void server_state_change_cb(const doca_data, doca_ctx *, doca_ctx_states, doca_ctx_states);
-void connect_event_cb(doca_comch_event_connection_status_changed *, doca_comch_connection *, uint8_t);
-void disconnect_event_cb(doca_comch_event_connection_status_changed *, doca_comch_connection *, uint8_t);
 void new_consumer_event_cb(doca_comch_event_consumer *, doca_comch_connection *, uint32_t);
 void expired_consumer_event_cb(doca_comch_event_consumer *, doca_comch_connection *, uint32_t);
 void task_completion_cb(doca_comch_task_send *, doca_data, doca_data);
@@ -179,18 +177,6 @@ void server_state_change_cb(const doca_data, doca_ctx *, doca_ctx_states, doca_c
     case DOCA_CTX_STATE_STOPPING: {
     } break;
   }
-}
-
-void connect_event_cb(doca_comch_event_connection_status_changed *, doca_comch_connection *connection,
-                      uint8_t success) {
-  assert(success);
-  conn = connection;
-}
-
-void disconnect_event_cb(doca_comch_event_connection_status_changed *, doca_comch_connection *connection,
-                         uint8_t success) {
-  assert(success);
-  assert(conn == connection);
 }
 
 void new_consumer_event_cb(doca_comch_event_consumer *, doca_comch_connection *connection, uint32_t id) {

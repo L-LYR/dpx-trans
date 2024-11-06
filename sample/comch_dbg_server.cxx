@@ -127,6 +127,7 @@ int main() {
   doca_check(doca_comch_server_create(dev, rep, name.data(), &s));
   auto s_ctx = doca_comch_server_as_ctx(s);
   doca_check(doca_comch_server_task_send_set_conf(s, task_completion_cb, task_error_cb, recv_queue_size));
+  doca_check(doca_comch_server_event_connection_status_changed_register(s, connect_event_cb, disconnect_event_cb));
   doca_check(doca_comch_server_event_msg_recv_register(s, recv_event_cb));
   doca_check(doca_comch_server_event_consumer_register(s, new_consumer_event_cb, expired_consumer_event_cb));
   doca_check(doca_comch_server_set_max_msg_size(s, max_msg_size));
