@@ -48,6 +48,11 @@ class BorrowedBuffer : public BufferBase {
   }
   ~BorrowedBuffer() = default;
 
+  void clear() {
+    doca_check(doca_buf_reset_data_len(buf));
+    BufferBase::clear();
+  }
+
  private:
   doca_buf* buf = nullptr;
 };
@@ -73,7 +78,6 @@ class Buffers : public OwnedBuffer {
     for (auto i = 0uz; i < n; ++i) {
       doca_buf* buf = nullptr;
       doca_check(doca_buf_pool_buf_alloc(pool, &buf));
-      doca_check(doca_buf_set_data_len(buf, piece_len));
       handles.emplace_back(buf);
     }
   }

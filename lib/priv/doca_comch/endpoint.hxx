@@ -6,6 +6,7 @@
 #include <doca_ctx.h>
 #include <doca_pe.h>
 
+#include <glaze/glaze.hpp>
 #include <list>
 
 #include "doca/check.hxx"
@@ -14,6 +15,8 @@
 #include "memory/simple_buffer.hxx"
 #include "priv/common.hxx"
 #include "util/unreachable.hxx"
+
+namespace doca {}  // namespace doca
 
 namespace doca::comch {
 
@@ -25,25 +28,19 @@ class Endpoint : public EndpointBase {
  public:
   Endpoint(Device &dev_, doca::Buffers &buffers_, doca::Buffers &bulk_buffers_, std::string_view name_)
       : dev(dev_), buffers(buffers_), bulk_buffers(bulk_buffers_), name(name_) {
-    uint32_t dev_max_msg_size = 0;
-    uint32_t dev_recv_queue_size = 0;
-    uint32_t dev_dp_max_msg_size = 0;
-    uint32_t dev_dp_recv_queue_size = 0;
-    doca_check(doca_comch_cap_get_max_msg_size(doca_dev_as_devinfo(dev.dev), &dev_max_msg_size));
-    doca_check(doca_comch_cap_get_max_recv_queue_size(doca_dev_as_devinfo(dev.dev), &dev_recv_queue_size));
-    doca_check(doca_comch_producer_cap_get_max_buf_size(doca_dev_as_devinfo(dev.dev), &dev_dp_max_msg_size));
-    doca_check(doca_comch_producer_cap_get_max_num_tasks(doca_dev_as_devinfo(dev.dev), &dev_dp_recv_queue_size));
-    DEBUG("{} {}", dev_dp_max_msg_size, dev_dp_recv_queue_size);
+    auto caps = dev_.probe_comch_params();
 
-    if (dev_max_msg_size < buffers.piece_size()) {
-      die("Device max rpc message size: {}", dev_max_msg_size);
+    if (caps.ctrl_path.max_msg_size < buffers.piece_size()) {
+      die("Device max rpc message size: {}", caps.ctrl_path.max_msg_size);
     }
-    if (dev_recv_queue_size < buffers.n_elements()) {
-      die("Device max recv queue depth: {}", dev_recv_queue_size);
+    if (caps.ctrl_path.max_recv_queue_size < buffers.n_elements()) {
+      die("Device max recv queue depth: {}", caps.ctrl_path.max_recv_queue_size);
     }
-    dev_recv_queue_size = std::min(static_cast<uint32_t>(buffers.n_elements()), dev_recv_queue_size);
-    dev_max_msg_size = std::min(static_cast<uint32_t>(buffers.piece_size()), dev_max_msg_size);
-    DEBUG("queue depth {}, msg size {}", dev_recv_queue_size, dev_max_msg_size);
+
+    INFO("Comch capability:\n{}", glz::write<glz::opts{.prettify = true}>(caps).value_or("Unexpected!"));
+
+    auto recv_queue_size = std::min(caps.ctrl_path.max_recv_queue_size, (uint32_t)buffers.n_elements());
+    auto msg_size = std::min(caps.ctrl_path.max_msg_size, (uint32_t)buffers.piece_size());
 
     doca_check(doca_pe_create(&cp_pe));
     if constexpr (side == Side::ServerSide) {
@@ -56,23 +53,23 @@ class Endpoint : public EndpointBase {
 
     if constexpr (side == Side::ServerSide) {
       auto ctx = doca_comch_server_as_ctx(s);
-      doca_check(doca_comch_server_task_send_set_conf(s, task_completion_cb, task_error_cb, dev_recv_queue_size));
+      doca_check(doca_comch_server_task_send_set_conf(s, task_completion_cb, task_error_cb, recv_queue_size));
       doca_check(doca_comch_server_event_msg_recv_register(s, recv_event_cb));
       doca_check(doca_comch_server_event_connection_status_changed_register(s, connect_event_cb, disconnect_event_cb));
       doca_check(doca_comch_server_event_consumer_register(s, new_consumer_event_cb, expired_consumer_event_cb));
-      doca_check(doca_comch_server_set_max_msg_size(s, dev_max_msg_size));
-      doca_check(doca_comch_server_set_recv_queue_size(s, dev_recv_queue_size));
+      doca_check(doca_comch_server_set_max_msg_size(s, msg_size));
+      doca_check(doca_comch_server_set_recv_queue_size(s, recv_queue_size));
       doca_check(doca_pe_connect_ctx(cp_pe, ctx));
       doca_check(doca_ctx_set_state_changed_cb(ctx, state_change_cb));
       doca_check(doca_ctx_set_user_data(ctx, doca_data(this)));
       doca_check(doca_ctx_start(ctx));
     } else if constexpr (side == Side::ClientSide) {
       auto ctx = doca_comch_client_as_ctx(c);
-      doca_check(doca_comch_client_task_send_set_conf(c, task_completion_cb, task_error_cb, dev_recv_queue_size));
+      doca_check(doca_comch_client_task_send_set_conf(c, task_completion_cb, task_error_cb, recv_queue_size));
       doca_check(doca_comch_client_event_msg_recv_register(c, recv_event_cb));
       doca_check(doca_comch_client_event_consumer_register(c, new_consumer_event_cb, expired_consumer_event_cb));
-      doca_check(doca_comch_client_set_max_msg_size(c, dev_max_msg_size));
-      doca_check(doca_comch_client_set_recv_queue_size(c, dev_recv_queue_size));
+      doca_check(doca_comch_client_set_max_msg_size(c, msg_size));
+      doca_check(doca_comch_client_set_recv_queue_size(c, recv_queue_size));
       doca_check(doca_pe_connect_ctx(cp_pe, ctx));
       doca_check(doca_ctx_set_state_changed_cb(ctx, state_change_cb));
       doca_check(doca_ctx_set_user_data(ctx, doca_data(this)));
@@ -102,7 +99,6 @@ class Endpoint : public EndpointBase {
   op_res_future_t post_recv(OpContext &ctx) {
     doca_comch_consumer_task_post_recv *task = nullptr;
     auto &buf = static_cast<doca::BorrowedBuffer &>(ctx.buf);
-    DEBUG("{}", (void *)buf.buf);
     doca_check(doca_comch_consumer_task_post_recv_alloc_init(con, buf.buf, &task));
     doca_task_set_user_data(doca_comch_consumer_task_post_recv_as_task(task), doca_data(&ctx));
     doca_check(doca_task_submit(doca_comch_consumer_task_post_recv_as_task(task)));
@@ -112,11 +108,10 @@ class Endpoint : public EndpointBase {
   op_res_future_t post_send(OpContext &ctx) {
     doca_comch_producer_task_send *task = nullptr;
     auto &buf = static_cast<doca::BorrowedBuffer &>(ctx.buf);
-    DEBUG("pro {} {}", (void *)pro, (void *)buf.buf);
+    doca_check(doca_buf_set_data_len(buf.buf, ctx.len));
     doca_check(doca_comch_producer_task_send_alloc_init(pro, buf.buf, reinterpret_cast<uint8_t *>(ctx.len),
                                                         sizeof(ctx.len), remote_consumer_id, &task));
     doca_task_set_user_data(doca_comch_producer_task_send_as_task(task), doca_data(&ctx));
-    DEBUG("{}", (void *)task);
     doca_check(doca_task_try_submit(doca_comch_producer_task_send_as_task(task)));
     return ctx.op_res.get_future();
   }
