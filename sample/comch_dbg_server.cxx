@@ -116,8 +116,11 @@ int main() {
   doca_check(doca_buf_pool_start(pool));
 
   doca_check(doca_buf_pool_buf_alloc(pool, &send_buf));
+  memset(buffer, 'C', piece_len);
+  doca_check(doca_buf_set_data_len(send_buf, piece_len));
 
   doca_check(doca_buf_pool_buf_alloc(pool, &recv_buf));
+  memset(&buffer[piece_len], 'D', piece_len);
 
   doca_check(doca_pe_create(&pe));
 
@@ -162,14 +165,12 @@ int main() {
 
   {
     doca_comch_consumer_task_post_recv *task;
-    memset(buffer, 'A', piece_len);
     doca_check(doca_comch_consumer_task_post_recv_alloc_init(con, recv_buf, &task));
     doca_check(doca_task_submit(doca_comch_consumer_task_post_recv_as_task(task)));
   }
   poll_until([]() { return recv; });
   {
     doca_comch_producer_task_send *task;
-    memset(buffer, 'B', piece_len);
     doca_check(doca_comch_producer_task_send_alloc_init(pro, send_buf, nullptr, 0, remote_consumer_id, &task));
     doca_check(doca_task_submit(doca_comch_producer_task_send_as_task(task)));
   }
