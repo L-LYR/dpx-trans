@@ -40,6 +40,7 @@ class ConnectionHandle {
     progress_all_until([](Endpoint& e) { return e.conn != nullptr; });
     for_each_endpoint([](Endpoint& e) { e.prepare(); });
     progress_all_until([](Endpoint& e) { return e.running(); });
+    progress_all_until([](Endpoint& e) { return e.remote_consumer_id != 0; });
   }
 
   void wait_for_disconnect() {
@@ -50,6 +51,7 @@ class ConnectionHandle {
     progress_all_until([](Endpoint& e) { return e.conn != nullptr; });
     for_each_endpoint([](Endpoint& e) { e.prepare(); });
     progress_all_until([](Endpoint& e) { return e.running(); });
+    progress_all_until([](Endpoint& e) { return e.remote_consumer_id != 0; });
   }
 
   void disconnect() {

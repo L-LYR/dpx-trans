@@ -109,10 +109,21 @@ class Endpoint : public EndpointBase {
     doca_comch_producer_task_send *task = nullptr;
     auto &buf = static_cast<doca::BorrowedBuffer &>(ctx.buf);
     doca_check(doca_buf_set_data_len(buf.buf, ctx.len));
-    doca_check(doca_comch_producer_task_send_alloc_init(pro, buf.buf, reinterpret_cast<uint8_t *>(ctx.len),
-                                                        sizeof(ctx.len), remote_consumer_id, &task));
-    doca_task_set_user_data(doca_comch_producer_task_send_as_task(task), doca_data(&ctx));
-    doca_check(doca_task_try_submit(doca_comch_producer_task_send_as_task(task)));
+
+    void *head = nullptr;
+    void *data = nullptr;
+    size_t len = 0;
+    size_t data_len = 0;
+    doca_check(doca_buf_get_head(buf.buf, &head));
+    doca_check(doca_buf_get_data(buf.buf, &data));
+    doca_check(doca_buf_get_len(buf.buf, &len));
+    doca_check(doca_buf_get_data_len(buf.buf, &data_len));
+    DEBUG("{} {} {} {} {} {} {} {}", (void *)&ctx, (void *)buf.base, buf.len, head, len, data, data_len,
+          remote_consumer_id);
+
+    doca_check(doca_comch_producer_task_send_alloc_init(pro, buf.buf, nullptr, 0, remote_consumer_id, &task));
+    // doca_task_set_user_data(doca_comch_producer_task_send_as_task(task), doca_data(&ctx));
+    doca_check(doca_task_submit(doca_comch_producer_task_send_as_task(task)));
     return ctx.op_res.get_future();
   }
 
@@ -290,8 +301,11 @@ class Endpoint : public EndpointBase {
     // auto endpoint = reinterpret_cast<Endpoint *>(ctx_user_data.ptr);
     auto ctx = reinterpret_cast<OpContext *>(task_user_data.ptr);
     if constexpr (type == CompCbType::OK) {
+      DEBUG("One send done {}", (void *)ctx);
       ctx->op_res.set_value(ctx->len);
     } else if constexpr (type == CompCbType::ERROR) {
+      auto error = doca_task_get_status(doca_comch_producer_task_send_as_task(task));
+      DEBUG("One send error {}, result: {}", (void *)ctx, doca_error_get_name(error));
       ctx->op_res.set_value(0);
     } else {
       static_unreachable;
@@ -305,9 +319,12 @@ class Endpoint : public EndpointBase {
     // auto endpoint = reinterpret_cast<Endpoint *>(ctx_user_data.ptr);
     auto ctx = reinterpret_cast<OpContext *>(task_user_data.ptr);
     if constexpr (type == CompCbType::OK) {
+      DEBUG("One recv done {}", (void *)ctx);
       // size_t len = *reinterpret_cast<const size_t *>(doca_comch_consumer_task_post_recv_get_imm_data(task));
       ctx->op_res.set_value(ctx->len);
     } else if constexpr (type == CompCbType::ERROR) {
+      auto error = doca_task_get_status(doca_comch_consumer_task_post_recv_as_task(task));
+      DEBUG("One recv error {}, result: {}", (void *)ctx, doca_error_get_name(error));
       ctx->op_res.set_value(0);
     } else {
       static_unreachable;

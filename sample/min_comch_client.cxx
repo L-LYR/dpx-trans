@@ -144,7 +144,7 @@ int main() {
 
   doca_check(doca_buf_pool_buf_alloc(pool, &send_buf));
   memset(buffer, 'A', piece_len);
-  doca_check(doca_buf_set_data_len(send_buf, piece_len));
+  doca_check(doca_buf_set_data_len(send_buf, piece_len / 2));
 
   memset(&buffer[piece_len], 'B', piece_len);
   doca_check(doca_buf_pool_buf_alloc(pool, &recv_buf));
