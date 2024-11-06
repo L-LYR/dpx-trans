@@ -1,4 +1,5 @@
 #include <doca_buf.h>
+#include <doca_buf_inventory.h>
 #include <doca_buf_pool.h>
 #include <doca_comch.h>
 #include <doca_comch_consumer.h>
@@ -8,17 +9,57 @@
 #include <doca_mmap.h>
 #include <doca_pe.h>
 
-#include "doca/check.hxx"
+#include <algorithm>
+#include <format>
+#include <iostream>
+#include <source_location>
+#include <thread>
 
-std::string pci_addr = "0000:03:00.0";
+namespace std {
+inline string to_string(const source_location &l) {
+  return format("{}:{} `{}`: ", l.file_name(), l.line(), l.function_name());
+}
+}  // namespace std
+
+[[noreturn]] inline void die(std::string why) { throw std::runtime_error(why); }
+inline void footprint(std::string what) { std::cerr << what << std::endl; }
+
+#define die(fmt, ...) \
+  die(std::to_string(std::source_location::current()) + std::vformat(fmt, std::make_format_args(__VA_ARGS__)))
+
+#define footprint(fmt, ...) \
+  footprint(std::to_string(std::source_location::current()) + std::vformat(fmt, std::make_format_args(__VA_ARGS__)))
+
+#define doca_check_ext(expr, ...)                                                                              \
+  do {                                                                                                         \
+    constexpr doca_error_t __expected_result__[] = {DOCA_SUCCESS __VA_OPT__(, ) __VA_ARGS__};                  \
+    constexpr size_t __n_expected__ = sizeof(__expected_result__) / sizeof(doca_error_t);                      \
+    doca_error_t __doca_check_result__ = expr;                                                                 \
+    if (std::ranges::none_of(std::span<const doca_error_t>(__expected_result__, __n_expected__),               \
+                             [&__doca_check_result__](doca_error_t e) { return e == __doca_check_result__; })) \
+        [[unlikely]] {                                                                                         \
+      die(#expr ": {}", doca_error_get_descr(__doca_check_result__));                                          \
+    } else {                                                                                                   \
+      footprint(#expr ": {}", doca_error_get_descr(__doca_check_result__));                                    \
+    }                                                                                                          \
+  } while (0);
+
+#define doca_check(expr)                                                    \
+  do {                                                                      \
+    doca_error_t __doca_check_result__ = expr;                              \
+    if (__doca_check_result__ != DOCA_SUCCESS) [[unlikely]] {               \
+      die(#expr ": {}", doca_error_get_descr(__doca_check_result__));       \
+    } else {                                                                \
+      footprint(#expr ": {}", doca_error_get_descr(__doca_check_result__)); \
+    }                                                                       \
+  } while (0);
+
+using namespace std::chrono_literals;
+
+std::string pci_addr = "0000:99:00.0";
 doca_dev *dev = nullptr;
 uint32_t n_devs = 0;
 doca_devinfo **dev_list;
-
-std::string rep_pci_addr = "0000:99:00.0";
-doca_dev_rep *rep = nullptr;
-uint32_t n_dev_reps = 0;
-doca_devinfo_rep **dev_rep_list;
 
 size_t len = 8192;
 size_t piece_len = 4096;
@@ -36,16 +77,18 @@ bool recv = false;
 doca_pe *pe = nullptr;
 
 std::string name = "debug";
-doca_comch_server *s;
+doca_comch_client *c;
 doca_comch_connection *conn = nullptr;
 
 uint32_t max_msg_size = 0;
 uint32_t recv_queue_size = 0;
 
-template <typename Fn>
-void poll_until(Fn &&predictor) {
+template <typename fn>
+void poll_until(fn &&predictor) {
   while (!predictor()) {
-    doca_pe_progress(pe);
+    if (!doca_pe_progress(pe)) {
+      std::this_thread::sleep_for(10us);
+    }
   }
 };
 
@@ -63,8 +106,6 @@ bool con_stop = false;
 uint32_t remote_consumer_id = 0;
 
 void server_state_change_cb(const doca_data, doca_ctx *, doca_ctx_states, doca_ctx_states);
-void connect_event_cb(doca_comch_event_connection_status_changed *, doca_comch_connection *, uint8_t);
-void disconnect_event_cb(doca_comch_event_connection_status_changed *, doca_comch_connection *, uint8_t);
 void new_consumer_event_cb(doca_comch_event_consumer *, doca_comch_connection *, uint32_t);
 void expired_consumer_event_cb(doca_comch_event_consumer *, doca_comch_connection *, uint32_t);
 void task_completion_cb(doca_comch_task_send *, doca_data, doca_data);
@@ -92,20 +133,6 @@ int main() {
     die("Device {} not found", pci_addr);
   }
 
-  doca_check(doca_devinfo_rep_create_list(dev, DOCA_DEVINFO_REP_FILTER_NET, &dev_rep_list, &n_dev_reps));
-  for (auto &devinfo_rep : std::span<doca_devinfo_rep *>(dev_rep_list, n_dev_reps)) {
-    uint8_t is_equal = 0;
-    doca_check(doca_devinfo_rep_is_equal_pci_addr(devinfo_rep, rep_pci_addr.data(), &is_equal));
-    if (is_equal) {
-      doca_check(doca_dev_rep_open(devinfo_rep, &rep));
-      break;
-    }
-  }
-  doca_check(doca_devinfo_rep_destroy_list(dev_rep_list));
-  if (rep == nullptr) {
-    die("Device representor {} not found", rep_pci_addr);
-  }
-
   doca_check(doca_mmap_create(&mmap));
   doca_check(doca_mmap_add_dev(mmap, dev));
   doca_check(doca_mmap_set_permissions(mmap, DOCA_ACCESS_FLAG_PCI_READ_WRITE));
@@ -116,32 +143,30 @@ int main() {
   doca_check(doca_buf_pool_start(pool));
 
   doca_check(doca_buf_pool_buf_alloc(pool, &send_buf));
-  memset(buffer, 'C', piece_len);
+  memset(buffer, 'A', piece_len);
   doca_check(doca_buf_set_data_len(send_buf, piece_len));
 
+  memset(&buffer[piece_len], 'B', piece_len);
   doca_check(doca_buf_pool_buf_alloc(pool, &recv_buf));
-  memset(&buffer[piece_len], 'D', piece_len);
 
   doca_check(doca_pe_create(&pe));
 
   doca_check(doca_comch_cap_get_max_msg_size(doca_dev_as_devinfo(dev), &max_msg_size));
   doca_check(doca_comch_cap_get_max_recv_queue_size(doca_dev_as_devinfo(dev), &recv_queue_size));
 
-  doca_check(doca_comch_server_create(dev, rep, name.data(), &s));
-  auto s_ctx = doca_comch_server_as_ctx(s);
-  doca_check(doca_comch_server_task_send_set_conf(s, task_completion_cb, task_error_cb, recv_queue_size));
-  doca_check(doca_comch_server_event_connection_status_changed_register(s, connect_event_cb, disconnect_event_cb));
-  doca_check(doca_comch_server_event_msg_recv_register(s, recv_event_cb));
-  doca_check(doca_comch_server_event_consumer_register(s, new_consumer_event_cb, expired_consumer_event_cb));
-  doca_check(doca_comch_server_set_max_msg_size(s, max_msg_size));
-  doca_check(doca_comch_server_set_recv_queue_size(s, recv_queue_size));
-  doca_check(doca_pe_connect_ctx(pe, s_ctx));
-  doca_check(doca_ctx_set_state_changed_cb(s_ctx, server_state_change_cb));
-  doca_check(doca_ctx_start(s_ctx));
+  doca_check(doca_comch_client_create(dev, name.data(), &c));
+  auto c_ctx = doca_comch_client_as_ctx(c);
+  doca_check(doca_comch_client_task_send_set_conf(c, task_completion_cb, task_error_cb, recv_queue_size));
+  doca_check(doca_comch_client_event_msg_recv_register(c, recv_event_cb));
+  doca_check(doca_comch_client_event_consumer_register(c, new_consumer_event_cb, expired_consumer_event_cb));
+  doca_check(doca_comch_client_set_max_msg_size(c, max_msg_size));
+  doca_check(doca_comch_client_set_recv_queue_size(c, recv_queue_size));
+  doca_check(doca_pe_connect_ctx(pe, c_ctx));
+  doca_check(doca_ctx_set_state_changed_cb(c_ctx, server_state_change_cb));
+  doca_check_ext(doca_ctx_start(c_ctx), DOCA_ERROR_IN_PROGRESS);
 
   poll_until([]() { return s_running; });
-
-  poll_until([]() { return conn != nullptr; });
+  doca_check(doca_comch_client_get_connection(c, &conn));
 
   doca_check(doca_comch_producer_create(conn, &pro));
   auto pro_ctx = doca_comch_producer_as_ctx(pro);
@@ -163,18 +188,20 @@ int main() {
 
   poll_until([]() { return remote_consumer_id != 0; });
 
+  std::this_thread::sleep_for(5s);
+
   {
     doca_comch_consumer_task_post_recv *task;
     doca_check(doca_comch_consumer_task_post_recv_alloc_init(con, recv_buf, &task));
     doca_check(doca_task_submit(doca_comch_consumer_task_post_recv_as_task(task)));
   }
-  poll_until([]() { return recv; });
   {
     doca_comch_producer_task_send *task;
     doca_check(doca_comch_producer_task_send_alloc_init(pro, send_buf, nullptr, 0, remote_consumer_id, &task));
     doca_check(doca_task_submit(doca_comch_producer_task_send_as_task(task)));
   }
   poll_until([]() { return send; });
+  poll_until([]() { return recv; });
 
   doca_check(doca_ctx_stop(pro_ctx));
   poll_until([]() { return pro_stop; });
@@ -184,10 +211,10 @@ int main() {
   poll_until([]() { return con_stop; });
   doca_check(doca_comch_consumer_destroy(con));
 
-  doca_check_ext(doca_ctx_stop(s_ctx), DOCA_ERROR_IN_PROGRESS);
+  doca_check_ext(doca_ctx_stop(c_ctx), DOCA_ERROR_IN_PROGRESS);
   poll_until([]() { return s_stop; });
 
-  doca_check(doca_comch_server_destroy(s));
+  doca_check(doca_comch_client_destroy(c));
 
   doca_check(doca_pe_destroy(pe));
 
@@ -218,18 +245,6 @@ void server_state_change_cb(const doca_data, doca_ctx *, doca_ctx_states, doca_c
     case DOCA_CTX_STATE_STOPPING: {
     } break;
   }
-}
-
-void connect_event_cb(doca_comch_event_connection_status_changed *, doca_comch_connection *connection,
-                      uint8_t success) {
-  assert(success);
-  conn = connection;
-}
-
-void disconnect_event_cb(doca_comch_event_connection_status_changed *, doca_comch_connection *connection,
-                         uint8_t success) {
-  assert(success);
-  assert(conn == connection);
 }
 
 void new_consumer_event_cb(doca_comch_event_consumer *, doca_comch_connection *connection, uint32_t id) {
