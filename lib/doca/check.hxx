@@ -2,6 +2,7 @@
 
 #include <doca_error.h>
 
+#include <algorithm>
 #include <ranges>
 #include <span>
 

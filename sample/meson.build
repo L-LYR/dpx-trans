@@ -8,8 +8,8 @@ samples = [
     ['rdma_client', [], []],
     ['doca_comch_client', [], []],
     ['doca_comch_server', [], []],
-    # ['doca_comch_data_path_client', [], []],
-    # ['doca_comch_data_path_server', [], []],
+    ['comch_dbg_server', [], []],
+    ['comch_dbg_client', [], []],
 ]
 
 foreach sample : samples

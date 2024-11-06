@@ -14,7 +14,7 @@ doca_dev *open_dev(std::string_view pci_addr) {
     if (is_equal) {
       doca_dev *dev = nullptr;
       doca_check(doca_dev_open(devinfo, &dev));
-      doca_devinfo_destroy_list(dev_list);
+      doca_check(doca_devinfo_destroy_list(dev_list));
       return dev;
     }
   }
@@ -31,7 +31,7 @@ doca_dev_rep *open_dev_rep(doca_dev *dev, std::string_view pci_addr, doca_devinf
     if (is_equal) {
       doca_dev_rep *dev_rep = nullptr;
       doca_check(doca_dev_rep_open(devinfo_rep, &dev_rep));
-      doca_devinfo_rep_destroy_list(dev_rep_list);
+      doca_check(doca_devinfo_rep_destroy_list(dev_rep_list));
       return dev_rep;
     }
   }
