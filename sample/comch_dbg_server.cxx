@@ -138,6 +138,8 @@ int main() {
 
   poll_until([]() { return s_running; });
 
+  poll_until([]() { return conn != nullptr; });
+
   doca_check(doca_comch_producer_create(conn, &pro));
   auto pro_ctx = doca_comch_producer_as_ctx(pro);
   doca_check(doca_pe_connect_ctx(pe, pro_ctx));
