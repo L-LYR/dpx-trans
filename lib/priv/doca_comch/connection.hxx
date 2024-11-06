@@ -49,7 +49,7 @@ class ConnectionHandle {
       return e.producer_stopped() && e.consumer_stopped() && e.remote_consumer_id == 0 && e.conn == nullptr;
     });
     for_each_endpoint([](Endpoint& e) { e.shutdown(); });
-    progress_all_until([](Endpoint& e) { return e.exited(); });
+    progress_all_until([](Endpoint& e) { return e.server_stopped() && e.exited(); });
   }
 
   void connect() {
@@ -65,6 +65,7 @@ class ConnectionHandle {
     progress_all_until(
         [](Endpoint& e) { return e.consumer_stopped() && e.producer_stopped() && e.remote_consumer_id == 0; });
     for_each_endpoint([](Endpoint& e) { e.shutdown(); });
+    progress_all_until([](Endpoint& e) { return e.client_stopped() && e.exited(); })
   }
 
  private:
