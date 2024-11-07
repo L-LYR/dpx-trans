@@ -101,6 +101,10 @@ class Endpoint : public EndpointBase {
   bool progress() { return doca_pe_progress(pe); }
 
   op_res_future_t post_recv(OpContext &ctx) {
+    if (consumer_stopped()) {
+      ctx.op_res.set_value(0);
+      return ctx.op_res.get_future();
+    }
     doca_comch_consumer_task_post_recv *task = nullptr;
     auto &buf = static_cast<doca::BorrowedBuffer &>(ctx.buf);
 
@@ -122,6 +126,10 @@ class Endpoint : public EndpointBase {
   }
 
   op_res_future_t post_send(OpContext &ctx) {
+    if (producer_stopped() || remote_consumer_id == 0) {
+      ctx.op_res.set_value(0);
+      return ctx.op_res.get_future();
+    }
     doca_comch_producer_task_send *task = nullptr;
     auto &buf = static_cast<doca::BorrowedBuffer &>(ctx.buf);
     doca_check(doca_buf_set_data_len(buf.buf, ctx.len));

@@ -17,6 +17,7 @@ int main(int argc, char* argv[]) {
                                                args::Options::Required);
   args::ValueFlag<std::string> server_name(p, "server name", "server name", {"server_name"}, args::Options::Required);
   args::ValueFlag<uint32_t> n_caller(p, "n caller", "n caller", {"n_caller"}, 1);
+  args::ValueFlag<uint32_t> n_req(p, "n request", "n request", {"n_req"}, 10);
 
   try {
     p.ParseCLI(argc, argv);
@@ -38,7 +39,7 @@ int main(int argc, char* argv[]) {
   std::this_thread::sleep_for(5s);
 
   auto call_fn = [&]() {
-    for (auto i = 0; i < 10000; i++) {
+    for (auto i = 0u; i < args::get(n_req); i++) {
       auto echo_resp = t.call<EchoRpc>(payload_4k);
       auto resp = echo_resp.get();
     }
