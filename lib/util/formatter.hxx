@@ -6,45 +6,13 @@
 
 #include "priv/common.hxx"
 
-inline constexpr const char *stringfy(Op op) {
-  switch (op) {
-    case Op::Recv:
-      return "recv";
-    case Op::Send:
-      return "send";
-  }
-}
-
-inline constexpr const char *stringfy(Side s) {
-  switch (s) {
-    case Side::ServerSide:
-      return "server";
-    case Side::ClientSide:
-      return "client";
-  }
-}
-
-inline constexpr const char *stringfy(Status s) {
-  switch (s) {
-    case Status::Idle:
-      return "Idle";
-    case Status::Ready:
-      return "Ready";
-    case Status::Running:
-      return "Running";
-    case Status::Stopping:
-      return "Stopped";
-    case Status::Exited:
-      return "Exited";
-  }
-}
-
-template <typename T>
-inline constexpr std::underlying_type_t<T> to_underlying(T t) {
-  return static_cast<uint32_t>(t);
-}
-
 namespace {
+template <typename T>
+inline constexpr std::underlying_type_t<T> to_underlying(T t)
+  requires(std::is_convertible_v<std::underlying_type_t<T>, size_t>)
+{
+  return static_cast<std::underlying_type_t<T>>(t);
+}
 // clang-format off
 constexpr const char *Op_strs[] = {
     [to_underlying(Op::Send)] = "send",
@@ -70,13 +38,13 @@ constexpr const char *doca_ctx_states_strs[] = {
 // clang-format on
 }  // namespace
 
-#define EnumFormatter(enum_type)                                                   \
-  template <>                                                                      \
-  struct std::formatter<enum_type> : std::formatter<const char *> {                \
-    template <typename Context>                                                    \
-    Context::iterator format(enum_type e, Context out) const {                     \
-      return std::formatter<const char *>::format(enum_type##_strs[from(e)], out); \
-    }                                                                              \
+#define EnumFormatter(enum_type)                                                            \
+  template <>                                                                               \
+  struct std::formatter<enum_type> : std::formatter<const char *> {                         \
+    template <typename Context>                                                             \
+    Context::iterator format(enum_type e, Context out) const {                              \
+      return std::formatter<const char *>::format(enum_type##_strs[to_underlying(e)], out); \
+    }                                                                                       \
   }
 
 EnumFormatter(Status);
