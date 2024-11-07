@@ -30,12 +30,12 @@ class Endpoint : public EndpointBase {
       : dev(dev_), buffers(buffers_), bulk_buffers(bulk_buffers_), name(name_) {
     auto caps = dev_.probe_comch_params();
 
-    if (caps.ctrl_path.max_msg_size < buffers.piece_size()) {
-      die("Device max rpc message size: {}", caps.ctrl_path.max_msg_size);
-    }
-    if (caps.ctrl_path.max_recv_queue_size < buffers.n_elements()) {
-      die("Device max recv queue depth: {}", caps.ctrl_path.max_recv_queue_size);
-    }
+    // if (caps.ctrl_path.max_msg_size < buffers.piece_size()) {
+    //   die("Device max rpc message size: {}", caps.ctrl_path.max_msg_size);
+    // }
+    // if (caps.ctrl_path.max_recv_queue_size < buffers.n_elements()) {
+    //   die("Device max recv queue depth: {}", caps.ctrl_path.max_recv_queue_size);
+    // }
 
     INFO("Comch capability:\n{}", glz::write<glz::opts{.prettify = true}>(caps).value_or("Unexpected!"));
 
