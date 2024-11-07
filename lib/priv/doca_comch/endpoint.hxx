@@ -121,7 +121,7 @@ class Endpoint : public EndpointBase {
 
     doca_check(doca_comch_consumer_task_post_recv_alloc_init(con, buf.buf, &task));
     doca_task_set_user_data(doca_comch_consumer_task_post_recv_as_task(task), doca_data(&ctx));
-    doca_check(doca_task_submit(doca_comch_consumer_task_post_recv_as_task(task)));
+    doca_check(doca_task_try_submit(doca_comch_consumer_task_post_recv_as_task(task)));
     return ctx.op_res.get_future();
   }
 
@@ -147,7 +147,7 @@ class Endpoint : public EndpointBase {
 
     doca_check(doca_comch_producer_task_send_alloc_init(pro, buf.buf, nullptr, 0, remote_consumer_id, &task));
     doca_task_set_user_data(doca_comch_producer_task_send_as_task(task), doca_data(&ctx));
-    doca_check(doca_task_submit(doca_comch_producer_task_send_as_task(task)));
+    doca_check(doca_task_try_submit(doca_comch_producer_task_send_as_task(task)));
     return ctx.op_res.get_future();
   }
 

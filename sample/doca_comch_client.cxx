@@ -32,7 +32,7 @@ int main(int argc, char* argv[]) {
     return -1;
   }
   Config<Backend::DOCA_Comch> c{
-      .queue_depth = args::get(n_caller) * 2, .max_rpc_msg_size = 4080, .conn_param = {.name = "sample"}};
+      .queue_depth = args::get(n_caller), .max_rpc_msg_size = 4096, .conn_param = {.name = "sample"}};
   doca::Device dev(args::get(dev_pci_address));
   Transport<Backend::DOCA_Comch, Side::ClientSide, EchoRpc> t(dev, c);
 
