@@ -37,7 +37,7 @@ class BufferBase {
     return base[i];
   }
 
-  void clear() { memset(base, 0, len); }
+  void reset() { memset(base, 0, len); }
 
   operator std::span<uint8_t>() { return std::span<uint8_t>(base, len); }
   operator std::span<const uint8_t>() const { return std::span<uint8_t>(base, len); }

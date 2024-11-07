@@ -234,8 +234,8 @@ class Endpoint : public EndpointBase {
   }
 
  private:
-  static void state_change_cb(const doca_data ctx_user_data, doca_ctx *, doca_ctx_states prev_state,
-                              doca_ctx_states next_state) {
+  static void state_change_cb(const doca_data ctx_user_data, doca_ctx *, [[maybe_unused]] doca_ctx_states prev_state,
+                              [[maybe_unused]] doca_ctx_states next_state) {
     auto e = reinterpret_cast<Endpoint *>(ctx_user_data.ptr);
     DEBUG("DOCA Comch {} {} state change: {} -> {}", e->name, side, prev_state, next_state);
   }
@@ -262,6 +262,12 @@ class Endpoint : public EndpointBase {
     auto e = reinterpret_cast<Endpoint *>(get_user_data_from_connection(conn));
     if (e->conn == conn) {
       e->conn = nullptr;
+      if (e->remote_consumer_id != 0) {
+        // if the connection stopped, consumer has already been closed,
+        // but the callback was not triggerred and will not be triggerred,
+        // set 0 here for not blocking server exit procedure.
+        e->remote_consumer_id = 0;
+      }
       DEBUG("Disconnection of {}", e->name);
     } else {
       WARN("Only support one connection, ignore");
@@ -299,6 +305,8 @@ class Endpoint : public EndpointBase {
 
   static void task_error_cb(doca_comch_task_send *task, doca_data task_user_data, doca_data) {
     auto ctx = reinterpret_cast<OpContext *>(task_user_data.ptr);
+    auto error = doca_task_get_status(doca_comch_task_send_as_task(task));
+    WARN("Ctrl path send task error: {}", doca_error_get_descr(error));
     ctx->op_res.set_value(0);
     doca_task_free(doca_comch_task_send_as_task(task));
   }
@@ -322,15 +330,16 @@ class Endpoint : public EndpointBase {
 
   static void post_send_cb(doca_comch_producer_task_send *task, doca_data task_user_data, doca_data) {
     auto ctx = reinterpret_cast<OpContext *>(task_user_data.ptr);
-    DEBUG("One send done {}", (void *)ctx);
+    [[maybe_unused]] auto &buf = reinterpret_cast<doca::BorrowedBuffer &>(ctx->buf);
+    // TRACE("One producer send task done, ctx: {}, buf: {}, len: {}", (void *)ctx, buf.base, buf.base, buf.len);
     ctx->op_res.set_value(ctx->len);
     doca_task_free(doca_comch_producer_task_send_as_task(task));
   }
 
   static void post_send_err_cb(doca_comch_producer_task_send *task, doca_data task_user_data, doca_data) {
     auto ctx = reinterpret_cast<OpContext *>(task_user_data.ptr);
-    auto error = doca_task_get_status(doca_comch_producer_task_send_as_task(task));
-    DEBUG("One send error {}, result: {}", (void *)ctx, doca_error_get_name(error));
+    [[maybe_unused]] auto error = doca_task_get_status(doca_comch_producer_task_send_as_task(task));
+    DEBUG("One send error {}, result: {}", (void *)ctx, doca_error_get_descr(error));
     ctx->op_res.set_value(0);
     doca_task_free(doca_comch_producer_task_send_as_task(task));
   }
@@ -346,20 +355,22 @@ class Endpoint : public EndpointBase {
 
   static void post_recv_err_cb(doca_comch_consumer_task_post_recv *task, doca_data task_user_data, doca_data) {
     auto ctx = reinterpret_cast<OpContext *>(task_user_data.ptr);
-    auto error = doca_task_get_status(doca_comch_consumer_task_post_recv_as_task(task));
+    [[maybe_unused]] auto error = doca_task_get_status(doca_comch_consumer_task_post_recv_as_task(task));
     DEBUG("One recv error {}, result: {}", (void *)ctx, doca_error_get_name(error));
     ctx->op_res.set_value(0);
     doca_task_free(doca_comch_consumer_task_post_recv_as_task(task));
   }
 
-  static void producer_state_change_cb(const doca_data ctx_user_data, doca_ctx *, doca_ctx_states prev_state,
-                                       doca_ctx_states next_state) {
+  static void producer_state_change_cb(const doca_data ctx_user_data, doca_ctx *,
+                                       [[maybe_unused]] doca_ctx_states prev_state,
+                                       [[maybe_unused]] doca_ctx_states next_state) {
     auto e = reinterpret_cast<Endpoint *>(ctx_user_data.ptr);
     DEBUG("DOCA Comch {} {} producer state change: {} -> {}", e->name, side, prev_state, next_state);
   }
 
-  static void consumer_state_change_cb(const doca_data ctx_user_data, doca_ctx *, doca_ctx_states prev_state,
-                                       doca_ctx_states next_state) {
+  static void consumer_state_change_cb(const doca_data ctx_user_data, doca_ctx *,
+                                       [[maybe_unused]] doca_ctx_states prev_state,
+                                       [[maybe_unused]] doca_ctx_states next_state) {
     auto e = reinterpret_cast<Endpoint *>(ctx_user_data.ptr);
     DEBUG("DOCA Comch {} {} consumer state change: {} -> {}", e->name, side, prev_state, next_state);
   }
@@ -448,20 +459,3 @@ class Endpoint : public EndpointBase {
 };
 
 }  // namespace doca::comch
-
-template <>
-struct std::formatter<doca_ctx_states> : std::formatter<const char *> {
-  template <typename Context>
-  Context::iterator format(doca_ctx_states s, Context out) const {
-    switch (s) {
-      case DOCA_CTX_STATE_IDLE:
-        return std::formatter<const char *>::format("Idle", out);
-      case DOCA_CTX_STATE_STARTING:
-        return std::formatter<const char *>::format("Starting", out);
-      case DOCA_CTX_STATE_RUNNING:
-        return std::formatter<const char *>::format("Running", out);
-      case DOCA_CTX_STATE_STOPPING:
-        return std::formatter<const char *>::format("Stopping", out);
-    }
-  }
-};

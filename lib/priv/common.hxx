@@ -2,7 +2,6 @@
 
 #include <boost/fiber/future.hpp>
 #include <cassert>
-#include <format>
 
 #include "concept/rpc.hxx"
 #include "memory/simple_buffer.hxx"
@@ -55,8 +54,7 @@ enum class Side {
   ServerSide,
 };
 
-// TODO: unused currently
-enum class Status {
+enum class Status : uint32_t {
   Idle,
   Ready,
   Running,
@@ -100,34 +98,4 @@ class EndpointBase : Noncopyable, Nonmovable {
   std::atomic<Status> s;
 };
 
-template <>
-struct std::formatter<Side> : std::formatter<const char *> {
-  template <typename Context>
-  Context::iterator format(Side s, Context out) const {
-    switch (s) {
-      case Side::ServerSide:
-        return std::formatter<const char *>::format("server", out);
-      case Side::ClientSide:
-        return std::formatter<const char *>::format("client", out);
-    }
-  }
-};
-
-template <>
-struct std::formatter<Status> : std::formatter<const char *> {
-  template <typename Context>
-  Context::iterator format(Status s, Context out) const {
-    switch (s) {
-      case Status::Idle:
-        return std::formatter<const char *>::format("Idle", out);
-      case Status::Ready:
-        return std::formatter<const char *>::format("Ready", out);
-      case Status::Running:
-        return std::formatter<const char *>::format("Running", out);
-      case Status::Stopping:
-        return std::formatter<const char *>::format("Stopped", out);
-      case Status::Exited:
-        return std::formatter<const char *>::format("Exited", out);
-    }
-  }
-};
+#include "util/formatter.hxx"

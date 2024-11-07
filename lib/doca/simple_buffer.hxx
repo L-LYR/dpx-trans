@@ -49,9 +49,9 @@ class BorrowedBuffer : public BufferBase {
   }
   ~BorrowedBuffer() = default;
 
-  void clear() {
+  void reset() {
     doca_check(doca_buf_reset_data_len(buf));
-    BufferBase::clear();
+    BufferBase::reset();
   }
 
  private:
