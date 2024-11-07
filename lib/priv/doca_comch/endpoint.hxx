@@ -116,8 +116,8 @@ class Endpoint : public EndpointBase {
     doca_check(doca_buf_get_data(buf.buf, &data));
     doca_check(doca_buf_get_len(buf.buf, &len));
     doca_check(doca_buf_get_data_len(buf.buf, &data_len));
-    DEBUG("{} {} {} {} {} {} {} {}", (void *)&ctx, (void *)buf.base, buf.len, head, len, data, data_len,
-          remote_consumer_id);
+    DEBUG("ctx {} buf.base {} buf.len {} head {} len {} data {} data_len {} remote_consumer_id {}", (void *)&ctx,
+          (void *)buf.base, buf.len, head, len, data, data_len, remote_consumer_id);
 
     doca_check(doca_comch_consumer_task_post_recv_alloc_init(con, buf.buf, &task));
     doca_task_set_user_data(doca_comch_consumer_task_post_recv_as_task(task), doca_data(&ctx));
@@ -142,8 +142,8 @@ class Endpoint : public EndpointBase {
     doca_check(doca_buf_get_data(buf.buf, &data));
     doca_check(doca_buf_get_len(buf.buf, &len));
     doca_check(doca_buf_get_data_len(buf.buf, &data_len));
-    DEBUG("{} {} {} {} {} {} {} {}", (void *)&ctx, (void *)buf.base, buf.len, head, len, data, data_len,
-          remote_consumer_id);
+    DEBUG("ctx {} buf.base {} buf.len {} head {} len {} data {} data_len {} remote_consumer_id {}", (void *)&ctx,
+          (void *)buf.base, buf.len, head, len, data, data_len, remote_consumer_id);
 
     doca_check(doca_comch_producer_task_send_alloc_init(pro, buf.buf, nullptr, 0, remote_consumer_id, &task));
     doca_task_set_user_data(doca_comch_producer_task_send_as_task(task), doca_data(&ctx));
@@ -168,6 +168,18 @@ class Endpoint : public EndpointBase {
     doca_task_set_user_data(doca_comch_task_send_as_task(task), doca_data(&ctx));
     doca_check(doca_task_submit(doca_comch_task_send_as_task(task)));
     return ctx.op_res.get_future();
+  }
+
+  bool running() {
+    if constexpr (side == Side::ClientSide) {
+      return EndpointBase::running() && client_running() && consumer_running() && producer_running() &&
+             remote_consumer_id != 0;
+    } else if constexpr (side == Side::ServerSide) {
+      return EndpointBase::running() && server_running() && consumer_running() && producer_running() &&
+             remote_consumer_id != 0;
+    } else {
+      static_unreachable;
+    }
   }
 
  protected:
