@@ -2,7 +2,8 @@
 
 #include "concept/rpc.hxx"
 #include "memory/simple_buffer_pool.hxx"
-#include "priv/common.hxx"
+#include "priv/context.hxx"
+#include "priv/defs.hxx"
 #include "priv/doca_comch/connection.hxx"
 #include "priv/doca_comch/endpoint.hxx"
 #include "priv/tcp/connection.hxx"

@@ -13,7 +13,9 @@
 #include "doca/device.hxx"
 #include "doca/simple_buffer.hxx"
 #include "memory/simple_buffer.hxx"
-#include "priv/common.hxx"
+#include "priv/context.hxx"
+#include "priv/defs.hxx"
+#include "priv/endpoint.hxx"
 #include "util/unreachable.hxx"
 
 namespace doca {}  // namespace doca
@@ -459,3 +461,23 @@ class Endpoint : public EndpointBase {
 };
 
 }  // namespace doca::comch
+
+// clang-format off
+EnumFormatter(doca_ctx_states,
+    [DOCA_CTX_STATE_IDLE]     = "Idle",
+    [DOCA_CTX_STATE_STARTING] = "Starting",
+    [DOCA_CTX_STATE_RUNNING]  = "Running",
+    [DOCA_CTX_STATE_STOPPING] = "Stopping",
+);
+// clang-format on
+
+template <>
+struct std::formatter<OpContext> : std::formatter<std::string> {
+  template <typename Context>
+  Context::iterator format(const OpContext &ctx, Context out) const {
+    return std::formatter<std::string>(
+        std::format("{} op, buf: {}, buf_len: {}, data_len: {}", ctx.op, reinterpret_cast<const void *>(ctx.buf.data()),
+                    ctx.buf.size(), ctx.len),
+        out);
+  }
+};
