@@ -77,7 +77,7 @@ std::string get_cm_connection_info(rdma_cm_id* id) {
   auto local_addr = std::format("{}:{}", inet_ntoa(local_addr_in->sin_addr), ntohs(local_addr_in->sin_port));
   auto remote_addr_in = reinterpret_cast<sockaddr_in*>(rdma_get_peer_addr(id));
   auto remote_addr = std::format("{}:{}", inet_ntoa(remote_addr_in->sin_addr), ntohs(remote_addr_in->sin_port));
-  return std::format("Connection {} <-> {}", local_addr, remote_addr);
+  return std::format("connection {} <-> {}", local_addr, remote_addr);
 }
 
 }  // namespace
@@ -119,7 +119,7 @@ void ConnectionHandle::listen_and_accept() {
     e.id->context = &e;
     c.ack(event);
     c.wait_and_ack(RDMA_CM_EVENT_ESTABLISHED);
-    DEBUG(get_cm_connection_info(e.id));
+    INFO("Establish {}", get_cm_connection_info(e.id));
     e.run();
   });
 }
@@ -162,7 +162,7 @@ void ConnectionHandle::connect() {
     auto event = c.wait(RDMA_CM_EVENT_ESTABLISHED);
     e.setup_remote_param(event->param.conn);
     c.ack(event);
-    DEBUG(get_cm_connection_info(e.id));
+    INFO("Establish {}", get_cm_connection_info(e.id));
     e.run();
     i++;
   });

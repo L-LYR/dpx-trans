@@ -48,7 +48,7 @@ std::string get_socket_connection_info(int sock) {
     die("Fail to get remote addr, errno: {}", errno);
   }
   auto remote_addr = std::format("{}:{}", inet_ntoa(addr_in.sin_addr), ntohs(addr_in.sin_port));
-  return std::format("Connection {} <-> {}", local_addr, remote_addr);
+  return std::format("connection {} <-> {}", local_addr, remote_addr);
 }
 
 void close_socket(int s) {
@@ -90,7 +90,7 @@ void ConnectionHandle::listen_and_accept() {
     if (e.sock < 0) {
       die("Fail to accept connection from peer, errno: {}", errno);
     }
-    INFO(get_socket_connection_info(e.sock));
+    INFO("Establish {}", get_socket_connection_info(e.sock));
     e.run();
   });
   close_socket(listen_sock);
@@ -123,7 +123,7 @@ void ConnectionHandle::connect() {
     if (auto ec = ::connect(e.sock, reinterpret_cast<sockaddr *>(&remote_addr_in), sizeof(remote_addr_in)); ec < 0) {
       die("Fail to connect with peer {}:{}, errno: {}", param.remote_ip, param.remote_port, errno);
     }
-    INFO(get_socket_connection_info(e.sock));
+    INFO("Establish {}", get_socket_connection_info(e.sock));
     e.run();
     i++;
   });

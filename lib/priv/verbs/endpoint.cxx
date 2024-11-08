@@ -1,5 +1,7 @@
 #include "priv/verbs/endpoint.hxx"
 
+#include <glaze/glaze.hpp>
+
 #include "util/fatal.hxx"
 
 namespace verbs {
@@ -168,7 +170,8 @@ void Endpoint::prepare() {
   if (auto ec = ibv_query_device_ex(id->verbs, &query, &device_attr_ex); ec < 0) {
     die("Fail to query extended attributes of device, errno: {}", errno);
   }
-  INFO("{} {}", device_attr_ex.orig_attr.max_qp_init_rd_atom, device_attr_ex.orig_attr.max_qp_rd_atom);
+  INFO("max_qp_init_rd_atom: {} max_qp_rd_atom: {}", device_attr_ex.orig_attr.max_qp_init_rd_atom,
+       device_attr_ex.orig_attr.max_qp_rd_atom);
   local.initiator_depth = device_attr_ex.orig_attr.max_qp_init_rd_atom;
   local.responder_resources = device_attr_ex.orig_attr.max_qp_rd_atom;
   local.rnr_retry_count = 7;

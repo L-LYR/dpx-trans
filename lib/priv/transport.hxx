@@ -206,7 +206,7 @@ class Transport {
     return false;
   }
 
-  void serve_once(size_t idx)
+  void serve_once([[maybe_unused]] size_t idx)
     requires(s == Side::ServerSide)
   {
     // constexpr auto n = sizeof...(Rpcs);
