@@ -30,7 +30,7 @@ int main(int argc, char* argv[]) {
   }
 
   Config<Backend::DOCA_Comch> c{
-      .queue_depth = args::get(n_worker), .max_rpc_msg_size = 4080, .conn_param = {.name = "sample"}};
+      .queue_depth = args::get(n_worker), .max_rpc_msg_size = 4096, .conn_param = {.name = "sample"}};
   doca::Device dev(args::get(dev_pci_address), args::get(rep_pci_address), DOCA_DEVINFO_REP_FILTER_NET);
   Transport<Backend::DOCA_Comch, Side::ServerSide, EchoRpc> t(dev, c);
   auto echo = [&]() {

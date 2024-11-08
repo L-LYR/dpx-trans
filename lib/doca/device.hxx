@@ -6,7 +6,7 @@
 #include <glaze/core/meta.hpp>
 #include <string_view>
 
-#include "priv/common.hxx"
+#include "priv/defs.hxx"
 #include "util/noncopyable.hxx"
 #include "util/nonmovable.hxx"
 

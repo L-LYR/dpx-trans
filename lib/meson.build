@@ -10,6 +10,8 @@ dpx_trans_incs += basic_incs
 
 dpx_trans_src = [
     './doca/device.cxx',
+    './priv/context.cxx',
+    './priv/endpoint.cxx',
     './priv/tcp/connection.cxx',
     './priv/tcp/endpoint.cxx',
     './priv/verbs/connection.cxx',

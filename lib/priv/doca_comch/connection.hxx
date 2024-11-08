@@ -1,6 +1,12 @@
 #pragma once
 
-#include "priv/common.hxx"
+#include <algorithm>
+#include <functional>
+#include <string>
+#include <thread>
+#include <vector>
+
+#include "priv/defs.hxx"
 
 using namespace std::chrono_literals;
 

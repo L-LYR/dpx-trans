@@ -3,7 +3,8 @@
 #include <liburing.h>
 
 #include "memory/simple_buffer.hxx"
-#include "priv/common.hxx"
+#include "priv/context.hxx"
+#include "priv/endpoint.hxx"
 #include "priv/tcp/connection.hxx"
 
 namespace tcp {

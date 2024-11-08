@@ -13,7 +13,9 @@
 #include "doca/device.hxx"
 #include "doca/simple_buffer.hxx"
 #include "memory/simple_buffer.hxx"
-#include "priv/common.hxx"
+#include "priv/context.hxx"
+#include "priv/defs.hxx"
+#include "priv/endpoint.hxx"
 #include "util/unreachable.hxx"
 
 namespace doca {}  // namespace doca
@@ -30,12 +32,12 @@ class Endpoint : public EndpointBase {
       : dev(dev_), buffers(buffers_), bulk_buffers(bulk_buffers_), name(name_) {
     auto caps = dev_.probe_comch_params();
 
-    if (caps.ctrl_path.max_msg_size < buffers.piece_size()) {
-      die("Device max rpc message size: {}", caps.ctrl_path.max_msg_size);
-    }
-    if (caps.ctrl_path.max_recv_queue_size < buffers.n_elements()) {
-      die("Device max recv queue depth: {}", caps.ctrl_path.max_recv_queue_size);
-    }
+    // if (caps.ctrl_path.max_msg_size < buffers.piece_size()) {
+    //   die("Device max rpc message size: {}", caps.ctrl_path.max_msg_size);
+    // }
+    // if (caps.ctrl_path.max_recv_queue_size < buffers.n_elements()) {
+    //   die("Device max recv queue depth: {}", caps.ctrl_path.max_recv_queue_size);
+    // }
 
     INFO("Comch capability:\n{}", glz::write<glz::opts{.prettify = true}>(caps).value_or("Unexpected!"));
 
@@ -101,6 +103,10 @@ class Endpoint : public EndpointBase {
   bool progress() { return doca_pe_progress(pe); }
 
   op_res_future_t post_recv(OpContext &ctx) {
+    if (consumer_stopped()) {
+      ctx.op_res.set_value(0);
+      return ctx.op_res.get_future();
+    }
     doca_comch_consumer_task_post_recv *task = nullptr;
     auto &buf = static_cast<doca::BorrowedBuffer &>(ctx.buf);
 
@@ -112,16 +118,20 @@ class Endpoint : public EndpointBase {
     doca_check(doca_buf_get_data(buf.buf, &data));
     doca_check(doca_buf_get_len(buf.buf, &len));
     doca_check(doca_buf_get_data_len(buf.buf, &data_len));
-    DEBUG("{} {} {} {} {} {} {} {}", (void *)&ctx, (void *)buf.base, buf.len, head, len, data, data_len,
-          remote_consumer_id);
+    DEBUG("ctx {} buf.base {} buf.len {} head {} len {} data {} data_len {} remote_consumer_id {}", (void *)&ctx,
+          (void *)buf.base, buf.len, head, len, data, data_len, remote_consumer_id);
 
     doca_check(doca_comch_consumer_task_post_recv_alloc_init(con, buf.buf, &task));
     doca_task_set_user_data(doca_comch_consumer_task_post_recv_as_task(task), doca_data(&ctx));
-    doca_check(doca_task_submit(doca_comch_consumer_task_post_recv_as_task(task)));
+    doca_check(doca_task_try_submit(doca_comch_consumer_task_post_recv_as_task(task)));
     return ctx.op_res.get_future();
   }
 
   op_res_future_t post_send(OpContext &ctx) {
+    if (producer_stopped() || remote_consumer_id == 0) {
+      ctx.op_res.set_value(0);
+      return ctx.op_res.get_future();
+    }
     doca_comch_producer_task_send *task = nullptr;
     auto &buf = static_cast<doca::BorrowedBuffer &>(ctx.buf);
     doca_check(doca_buf_set_data_len(buf.buf, ctx.len));
@@ -134,12 +144,12 @@ class Endpoint : public EndpointBase {
     doca_check(doca_buf_get_data(buf.buf, &data));
     doca_check(doca_buf_get_len(buf.buf, &len));
     doca_check(doca_buf_get_data_len(buf.buf, &data_len));
-    DEBUG("{} {} {} {} {} {} {} {}", (void *)&ctx, (void *)buf.base, buf.len, head, len, data, data_len,
-          remote_consumer_id);
+    DEBUG("ctx {} buf.base {} buf.len {} head {} len {} data {} data_len {} remote_consumer_id {}", (void *)&ctx,
+          (void *)buf.base, buf.len, head, len, data, data_len, remote_consumer_id);
 
     doca_check(doca_comch_producer_task_send_alloc_init(pro, buf.buf, nullptr, 0, remote_consumer_id, &task));
     doca_task_set_user_data(doca_comch_producer_task_send_as_task(task), doca_data(&ctx));
-    doca_check(doca_task_submit(doca_comch_producer_task_send_as_task(task)));
+    doca_check(doca_task_try_submit(doca_comch_producer_task_send_as_task(task)));
     return ctx.op_res.get_future();
   }
 
@@ -160,6 +170,18 @@ class Endpoint : public EndpointBase {
     doca_task_set_user_data(doca_comch_task_send_as_task(task), doca_data(&ctx));
     doca_check(doca_task_submit(doca_comch_task_send_as_task(task)));
     return ctx.op_res.get_future();
+  }
+
+  bool running() {
+    if constexpr (side == Side::ClientSide) {
+      return EndpointBase::running() && client_running() && consumer_running() && producer_running() &&
+             remote_consumer_id != 0;
+    } else if constexpr (side == Side::ServerSide) {
+      return EndpointBase::running() && server_running() && consumer_running() && producer_running() &&
+             remote_consumer_id != 0;
+    } else {
+      static_unreachable;
+    }
   }
 
  protected:
@@ -214,8 +236,8 @@ class Endpoint : public EndpointBase {
   }
 
  private:
-  static void state_change_cb(const doca_data ctx_user_data, doca_ctx *, doca_ctx_states prev_state,
-                              doca_ctx_states next_state) {
+  static void state_change_cb(const doca_data ctx_user_data, doca_ctx *, [[maybe_unused]] doca_ctx_states prev_state,
+                              [[maybe_unused]] doca_ctx_states next_state) {
     auto e = reinterpret_cast<Endpoint *>(ctx_user_data.ptr);
     DEBUG("DOCA Comch {} {} state change: {} -> {}", e->name, side, prev_state, next_state);
   }
@@ -242,6 +264,12 @@ class Endpoint : public EndpointBase {
     auto e = reinterpret_cast<Endpoint *>(get_user_data_from_connection(conn));
     if (e->conn == conn) {
       e->conn = nullptr;
+      if (e->remote_consumer_id != 0) {
+        // if the connection stopped, consumer has already been closed,
+        // but the callback was not triggerred and will not be triggerred,
+        // set 0 here for not blocking server exit procedure.
+        e->remote_consumer_id = 0;
+      }
       DEBUG("Disconnection of {}", e->name);
     } else {
       WARN("Only support one connection, ignore");
@@ -279,6 +307,8 @@ class Endpoint : public EndpointBase {
 
   static void task_error_cb(doca_comch_task_send *task, doca_data task_user_data, doca_data) {
     auto ctx = reinterpret_cast<OpContext *>(task_user_data.ptr);
+    auto error = doca_task_get_status(doca_comch_task_send_as_task(task));
+    WARN("Ctrl path send task error: {}", doca_error_get_descr(error));
     ctx->op_res.set_value(0);
     doca_task_free(doca_comch_task_send_as_task(task));
   }
@@ -302,15 +332,16 @@ class Endpoint : public EndpointBase {
 
   static void post_send_cb(doca_comch_producer_task_send *task, doca_data task_user_data, doca_data) {
     auto ctx = reinterpret_cast<OpContext *>(task_user_data.ptr);
-    DEBUG("One send done {}", (void *)ctx);
+    [[maybe_unused]] auto &buf = reinterpret_cast<doca::BorrowedBuffer &>(ctx->buf);
+    // TRACE("One producer send task done, ctx: {}, buf: {}, len: {}", (void *)ctx, buf.base, buf.base, buf.len);
     ctx->op_res.set_value(ctx->len);
     doca_task_free(doca_comch_producer_task_send_as_task(task));
   }
 
   static void post_send_err_cb(doca_comch_producer_task_send *task, doca_data task_user_data, doca_data) {
     auto ctx = reinterpret_cast<OpContext *>(task_user_data.ptr);
-    auto error = doca_task_get_status(doca_comch_producer_task_send_as_task(task));
-    DEBUG("One send error {}, result: {}", (void *)ctx, doca_error_get_name(error));
+    [[maybe_unused]] auto error = doca_task_get_status(doca_comch_producer_task_send_as_task(task));
+    DEBUG("One send error {}, result: {}", (void *)ctx, doca_error_get_descr(error));
     ctx->op_res.set_value(0);
     doca_task_free(doca_comch_producer_task_send_as_task(task));
   }
@@ -326,20 +357,22 @@ class Endpoint : public EndpointBase {
 
   static void post_recv_err_cb(doca_comch_consumer_task_post_recv *task, doca_data task_user_data, doca_data) {
     auto ctx = reinterpret_cast<OpContext *>(task_user_data.ptr);
-    auto error = doca_task_get_status(doca_comch_consumer_task_post_recv_as_task(task));
+    [[maybe_unused]] auto error = doca_task_get_status(doca_comch_consumer_task_post_recv_as_task(task));
     DEBUG("One recv error {}, result: {}", (void *)ctx, doca_error_get_name(error));
     ctx->op_res.set_value(0);
     doca_task_free(doca_comch_consumer_task_post_recv_as_task(task));
   }
 
-  static void producer_state_change_cb(const doca_data ctx_user_data, doca_ctx *, doca_ctx_states prev_state,
-                                       doca_ctx_states next_state) {
+  static void producer_state_change_cb(const doca_data ctx_user_data, doca_ctx *,
+                                       [[maybe_unused]] doca_ctx_states prev_state,
+                                       [[maybe_unused]] doca_ctx_states next_state) {
     auto e = reinterpret_cast<Endpoint *>(ctx_user_data.ptr);
     DEBUG("DOCA Comch {} {} producer state change: {} -> {}", e->name, side, prev_state, next_state);
   }
 
-  static void consumer_state_change_cb(const doca_data ctx_user_data, doca_ctx *, doca_ctx_states prev_state,
-                                       doca_ctx_states next_state) {
+  static void consumer_state_change_cb(const doca_data ctx_user_data, doca_ctx *,
+                                       [[maybe_unused]] doca_ctx_states prev_state,
+                                       [[maybe_unused]] doca_ctx_states next_state) {
     auto e = reinterpret_cast<Endpoint *>(ctx_user_data.ptr);
     DEBUG("DOCA Comch {} {} consumer state change: {} -> {}", e->name, side, prev_state, next_state);
   }
@@ -429,19 +462,22 @@ class Endpoint : public EndpointBase {
 
 }  // namespace doca::comch
 
+// clang-format off
+EnumFormatter(doca_ctx_states,
+    [DOCA_CTX_STATE_IDLE]     = "Idle",
+    [DOCA_CTX_STATE_STARTING] = "Starting",
+    [DOCA_CTX_STATE_RUNNING]  = "Running",
+    [DOCA_CTX_STATE_STOPPING] = "Stopping",
+);
+// clang-format on
+
 template <>
-struct std::formatter<doca_ctx_states> : std::formatter<const char *> {
+struct std::formatter<OpContext> : std::formatter<std::string> {
   template <typename Context>
-  Context::iterator format(doca_ctx_states s, Context out) const {
-    switch (s) {
-      case DOCA_CTX_STATE_IDLE:
-        return std::formatter<const char *>::format("Idle", out);
-      case DOCA_CTX_STATE_STARTING:
-        return std::formatter<const char *>::format("Starting", out);
-      case DOCA_CTX_STATE_RUNNING:
-        return std::formatter<const char *>::format("Running", out);
-      case DOCA_CTX_STATE_STOPPING:
-        return std::formatter<const char *>::format("Stopping", out);
-    }
+  Context::iterator format(const OpContext &ctx, Context out) const {
+    return std::formatter<std::string>(
+        std::format("{} op, buf: {}, buf_len: {}, data_len: {}", ctx.op, reinterpret_cast<const void *>(ctx.buf.data()),
+                    ctx.buf.size(), ctx.len),
+        out);
   }
 };

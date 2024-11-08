@@ -41,6 +41,7 @@ class BufferPool : Noncopyable, Nonmovable {
   void release_one(BufferType &buffer) {
     assert((buffer.size() == bs.piece_size() && bs.data() <= buffer.data() &&
             buffer.data() + buffer.size() <= bs.data() + bs.size()));
+    buffer.reset();
     q.emplace_back(buffer);
   }
   Buffers &buffers() { return bs; }

@@ -2,7 +2,8 @@
 
 #include "concept/rpc.hxx"
 #include "memory/simple_buffer_pool.hxx"
-#include "priv/common.hxx"
+#include "priv/context.hxx"
+#include "priv/defs.hxx"
 #include "priv/doca_comch/connection.hxx"
 #include "priv/doca_comch/endpoint.hxx"
 #include "priv/tcp/connection.hxx"
@@ -218,7 +219,6 @@ class Transport {
 
     DEBUG("worker {} post recv", idx);
     OpContext recv_ctx(Op::Recv, acquire_recv_buffer());
-    recv_ctx.buf.clear();
     auto n_read = cp_e.post_recv(recv_ctx).get();
     if (n_read < 0) {
       die("Fail to read payload, errno: {}", -n_read);
@@ -238,7 +238,6 @@ class Transport {
     }
 
     OpContext send_ctx(Op::Send, acquire_send_buffer());
-    send_ctx.buf.clear();
     auto serializer = Serializer(send_ctx.buf);
     if (!(dispatch_request<rpcs>(seq, id, deserializer, serializer) || ...)) {
       die("Mismatch rpc id, got {}", id);

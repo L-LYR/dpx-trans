@@ -60,8 +60,8 @@ bool Device::run_on_dpu() {
 ComchCapability Device::probe_comch_params() {
   ComchCapability caps = {};
   auto dev_info = doca_dev_as_devinfo(dev);
-  caps.ctrl_path.client_is_supported = doca_comch_cap_server_is_supported(dev_info) == DOCA_SUCCESS;
-  caps.ctrl_path.server_is_supported = doca_comch_cap_client_is_supported(dev_info) == DOCA_SUCCESS;
+  caps.ctrl_path.client_is_supported = doca_comch_cap_client_is_supported(dev_info) == DOCA_SUCCESS;
+  caps.ctrl_path.server_is_supported = doca_comch_cap_server_is_supported(dev_info) == DOCA_SUCCESS;
   if (caps.ctrl_path.client_is_supported || caps.ctrl_path.server_is_supported) {
     doca_check(doca_comch_cap_get_max_clients(dev_info, &caps.ctrl_path.max_clients_per_server));
     doca_check(doca_comch_cap_get_max_name_len(dev_info, &caps.ctrl_path.max_name_len));
