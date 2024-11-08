@@ -39,7 +39,7 @@ op_res_future_t Endpoint::post_recv(OpContext& ctx) {
   ibv_sge sge = {
       .addr = reinterpret_cast<uint64_t>(ctx.buf.data()),
       .length = static_cast<uint32_t>(ctx.len),
-      .lkey = mr->lkey,
+      .lkey = recv_mr->lkey,
   };
   ibv_recv_wr wr = {
       .wr_id = reinterpret_cast<uint64_t>(&ctx),
@@ -58,7 +58,7 @@ op_res_future_t Endpoint::post_send(OpContext& ctx) {
   ibv_sge sge = {
       .addr = reinterpret_cast<uint64_t>(ctx.buf.data()),
       .length = static_cast<uint32_t>(ctx.len),
-      .lkey = mr->lkey,
+      .lkey = send_mr->lkey,
   };
   ibv_send_wr wr = {
       .wr_id = reinterpret_cast<uint64_t>(&ctx),
@@ -81,7 +81,8 @@ op_res_future_t Endpoint::post_send(OpContext& ctx) {
   return ctx.op_res.get_future();
 }
 
-Endpoint::Endpoint(naive::Buffers& buffers_) : buffers(buffers_) {}
+Endpoint::Endpoint(naive::Buffers& send_buffers_, naive::Buffers& recv_buffers_)
+    : send_buffers(send_buffers_), recv_buffers(recv_buffers_) {}
 
 Endpoint::~Endpoint() {
   if (qp != nullptr) {
@@ -99,9 +100,14 @@ Endpoint::~Endpoint() {
       die("Fail to destroy cq, errno{}", errno);
     }
   }
-  if (mr != nullptr) {
-    if (auto ec = ibv_dereg_mr(mr); ec != 0) {
-      die("Fail to deregiser memory region at (addr: {}, length: {}), ernno {}", mr->addr, mr->length, errno);
+  if (send_mr != nullptr) {
+    if (auto ec = ibv_dereg_mr(send_mr); ec != 0) {
+      die("Fail to deregiser memory region at (addr: {}, length: {}), ernno {}", send_mr->addr, send_mr->length, errno);
+    }
+  }
+  if (recv_mr != nullptr) {
+    if (auto ec = ibv_dereg_mr(recv_mr); ec != 0) {
+      die("Fail to deregiser memory region at (addr: {}, length: {}), ernno {}", recv_mr->addr, recv_mr->length, errno);
     }
   }
   if (pd != nullptr) {
@@ -113,11 +119,12 @@ Endpoint::~Endpoint() {
 
 void Endpoint::prepare() {
   assert(id != nullptr);
-  uint32_t n_wr = buffers.n_elements();
+  uint32_t n_send_wr = send_buffers.n_elements();
+  uint32_t n_recv_wr = recv_buffers.n_elements();
   if (pd = ibv_alloc_pd(id->verbs); pd == nullptr) {
     die("Fail to allocate pd, errno {}", errno);
   }
-  if (cq = ibv_create_cq(id->verbs, n_wr, this, nullptr, 0); cq == nullptr) {
+  if (cq = ibv_create_cq(id->verbs, n_send_wr + n_recv_wr, this, nullptr, 0); cq == nullptr) {
     die("Fail to create cq, errno {}", errno);
   }
   ibv_qp_init_attr attr = {
@@ -127,8 +134,8 @@ void Endpoint::prepare() {
       .srq = nullptr,
       .cap =
           ibv_qp_cap{
-              .max_send_wr = n_wr,
-              .max_recv_wr = n_wr,
+              .max_send_wr = n_send_wr,
+              .max_recv_wr = n_recv_wr,
               .max_send_sge = 1,
               .max_recv_sge = 1,
               .max_inline_data = 0,
@@ -140,14 +147,22 @@ void Endpoint::prepare() {
     die("Fail to create qp, errno {}", errno);
   }
   qp = id->qp;
-  if (mr = ibv_reg_mr(pd, buffers.data(), buffers.size(),
-                      IBV_ACCESS_LOCAL_WRITE | IBV_ACCESS_REMOTE_READ | IBV_ACCESS_REMOTE_WRITE);
-      mr == nullptr) {
+  if (send_mr = ibv_reg_mr(pd, send_buffers.data(), send_buffers.size(),
+                           IBV_ACCESS_LOCAL_WRITE | IBV_ACCESS_REMOTE_READ | IBV_ACCESS_REMOTE_WRITE);
+      send_mr == nullptr) {
     die("Fail to register memory region, errno {}", errno);
   }
-  local_mr_h.address = reinterpret_cast<uint64_t>(mr->addr);
-  local_mr_h.length = mr->length;
-  local_mr_h.rkey = mr->rkey;
+  local_mr_h[0].address = reinterpret_cast<uint64_t>(send_mr->addr);
+  local_mr_h[0].length = send_mr->length;
+  local_mr_h[0].rkey = send_mr->rkey;
+  if (recv_mr = ibv_reg_mr(pd, recv_buffers.data(), recv_buffers.size(),
+                           IBV_ACCESS_LOCAL_WRITE | IBV_ACCESS_REMOTE_READ | IBV_ACCESS_REMOTE_WRITE);
+      recv_mr == nullptr) {
+    die("Fail to register memory region, errno {}", errno);
+  }
+  local_mr_h[1].address = reinterpret_cast<uint64_t>(recv_mr->addr);
+  local_mr_h[1].length = recv_mr->length;
+  local_mr_h[1].rkey = recv_mr->rkey;
   ibv_device_attr_ex device_attr_ex = {};
   ibv_query_device_ex_input query = {};
   if (auto ec = ibv_query_device_ex(id->verbs, &query, &device_attr_ex); ec < 0) {

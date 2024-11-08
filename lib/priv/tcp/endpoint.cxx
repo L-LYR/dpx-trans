@@ -5,12 +5,22 @@
 
 namespace tcp {
 
-Endpoint::Endpoint(naive::Buffers &buffers_) : buffers(buffers_) {
-  if (auto ec = io_uring_queue_init(buffers.n_elements(), &ring, 0); ec < 0) {
+Endpoint::Endpoint(naive::Buffers &send_buffers_, naive::Buffers &recv_buffers_)
+    : send_buffers(send_buffers_), recv_buffers(recv_buffers_) {
+  if (auto ec = io_uring_queue_init(send_buffers.n_elements() + recv_buffers.n_elements(), &ring, 0); ec < 0) {
     die("Fail to init ring, errno: {}", -ec);
   }
-  iovec v = {.iov_base = buffers.data(), .iov_len = buffers.size()};
-  if (auto ec = io_uring_register_buffers(&ring, &v, 1); ec < 0) {
+  iovec vs[2] = {
+      {
+          .iov_base = send_buffers.data(),
+          .iov_len = send_buffers.size(),
+      },
+      {
+          .iov_base = recv_buffers.data(),
+          .iov_len = recv_buffers.size(),
+      },
+  };
+  if (auto ec = io_uring_register_buffers(&ring, vs, 2); ec < 0) {
     die("Fail to register buffers, errno: {}", -ec);
   }
   EndpointBase::prepare();
@@ -50,7 +60,7 @@ op_res_future_t Endpoint::post(OpContext &ctx) {
     io_uring_prep_write_fixed(sqe, sock, buf.data(), buf.size(), 0, 0);
   } else if constexpr (op == Op::Recv) {
     DEBUG("{} {}", (void *)buf.data(), buf.size());
-    io_uring_prep_read_fixed(sqe, sock, buf.data(), buf.size(), 0, 0);
+    io_uring_prep_read_fixed(sqe, sock, buf.data(), buf.size(), 0, 1);
   } else {
     static_unreachable;
   }

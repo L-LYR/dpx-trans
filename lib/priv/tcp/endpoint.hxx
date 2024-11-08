@@ -13,7 +13,7 @@ class Endpoint : public EndpointBase {
   friend class ConnectionHandle;
 
  public:
-  Endpoint(naive::Buffers &buffers_);
+  Endpoint(naive::Buffers &send_buffers_, naive::Buffers &recv_buffers_);
 
   ~Endpoint();
 
@@ -28,7 +28,8 @@ class Endpoint : public EndpointBase {
 
   int sock = -1;  // do not own, just borrowed
   io_uring ring;
-  naive::Buffers &buffers;
+  naive::Buffers &send_buffers;
+  naive::Buffers &recv_buffers;
 };
 
 }  // namespace tcp
