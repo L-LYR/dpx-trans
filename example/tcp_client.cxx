@@ -17,6 +17,7 @@ int main(int argc, char* argv[]) {
   args::ValueFlag<std::string> remote_ip(p, "remote ip", "remote ip", {"remote_ip"}, args::Options::Required);
   args::ValueFlag<uint16_t> remote_port(p, "remote port", "remote port", {"remote_port"}, args::Options::Required);
   args::ValueFlag<uint32_t> n_caller(p, "n caller", "n caller", {"n_caller"}, 1);
+  args::ValueFlag<uint32_t> n_req(p, "n request", "n request", {"n_req"}, 10);
 
   try {
     p.ParseCLI(argc, argv);
@@ -45,7 +46,7 @@ int main(int argc, char* argv[]) {
   Transport<Backend::TCP, Side::ClientSide, EchoRpc> t(c);
 
   auto call_fn = [&]() {
-    for (auto i = 0; i < 10000; i++) {
+    for (auto i = 0u; i < args::get(n_req); i++) {
       auto echo_resp = t.call<EchoRpc>(payload_4k);
       auto resp = echo_resp.get();
     }
