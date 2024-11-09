@@ -70,10 +70,10 @@ class Transport {
   Transport(doca::Device &dev, Config<b> config_)
     requires(b == Backend::DOCA_Comch)
       : config(config_),
-        cp_conn_handle(config.conn_param),
+        cp_conn_handle(dev, config.conn_param),
         send_bufs(dev, config.queue_depth, config.max_rpc_msg_size),
         recv_bufs(dev, config.queue_depth, config.max_rpc_msg_size),
-        cp_e(dev, send_bufs.buffers(), recv_bufs.buffers(), config.conn_param.name) {
+        cp_e(dev, send_bufs.buffers(), recv_bufs.buffers()) {
     establish_connections();
   }
 

@@ -14,10 +14,13 @@ namespace doca {
 
 namespace comch {
 
-template <Side s>
+template <Side>
 class Endpoint;
 
-}
+template <Side>
+class ConnectionHandle;
+
+}  // namespace comch
 
 struct ComchCapability {
   struct {
@@ -49,8 +52,10 @@ struct ComchCapability {
 };
 
 class Device : Noncopyable, Nonmovable {
-  template <Side s>
+  template <Side>
   friend class comch::Endpoint;
+  template <Side>
+  friend class comch::ConnectionHandle;
   friend class Buffers;
 
  public:
