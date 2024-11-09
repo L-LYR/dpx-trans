@@ -33,7 +33,9 @@ class Endpoint : public EndpointBase {
 
  public:
   Endpoint(Device &dev_, doca::Buffers &send_buffers_, doca::Buffers &recv_buffers_)
-      : dev(dev_), send_buffers(send_buffers_), recv_buffers(recv_buffers_) {}
+      : dev(dev_), send_buffers(send_buffers_), recv_buffers(recv_buffers_) {
+    doca_check(doca_pe_create(&pe));
+  }
 
   ~Endpoint() {
     if (pro != nullptr) {
