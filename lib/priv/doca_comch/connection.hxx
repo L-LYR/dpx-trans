@@ -78,7 +78,7 @@ class ConnectionHandle {
       static_unreachable;
     }
 
-    progress_until([this]() { return established(); });
+    progress_until([this]() { return established() && conn != nullptr; });
   }
 
   ~ConnectionHandle() {
