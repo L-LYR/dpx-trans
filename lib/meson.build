@@ -1,6 +1,9 @@
 dpx_trans_deps = []
 
 dpx_trans_deps += basic_deps
+dpx_trans_deps += glaze_dep
+dpx_trans_deps += spdlog_dep
+dpx_trans_deps += zpp_bits_dep
 dpx_trans_deps += uring_dep
 dpx_trans_deps += doca_deps
 dpx_trans_deps += rdma_deps

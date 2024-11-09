@@ -49,15 +49,21 @@ glaze_opt.add_cmake_defines(
 basic_deps = [
     dependency('threads', required: true),
     dependency('boost', modules: ['fiber', 'context'], required: true),
-    subproject('dbg-macro').get_variable('dbg_macro_dep'),
-    subproject('zpp_bits').get_variable('zpp_bits_dep'),
-    subproject(
-        'spdlog',
-        default_options: ['tests=disabled', 'std_format=enabled'],
-        required: true,
-    ).get_variable('spdlog_dep'),
-    cmake.subproject('glaze', options: glaze_opt).dependency('glaze_glaze'),
 ]
+
+dbg_dep = subproject('dbg-macro').get_variable('dbg_macro_dep')
+
+zpp_bits_dep = subproject('zpp_bits').get_variable('zpp_bits_dep')
+
+spdlog_dep = subproject(
+    'spdlog',
+    default_options: ['tests=disabled', 'std_format=enabled'],
+    required: true,
+).get_variable('spdlog_dep')
+
+glaze_dep = cmake.subproject('glaze', options: glaze_opt).dependency(
+    'glaze_glaze',
+)
 
 rdma_deps = [
     dependency('librdmacm', required: true),
@@ -81,5 +87,6 @@ basic_incs = [
 ]
 
 subdir('lib')
+subdir('example')
 subdir('sample')
 subdir('tool')

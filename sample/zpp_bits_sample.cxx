@@ -1,6 +1,7 @@
-#include "dbg.h"
-#include "util/hex_dump.hxx"
-#include "zpp_bits.h"
+#include <dbg.h>
+#include <zpp_bits.h>
+
+#include <../lib/util/hex_dump.hxx>  // relative path, header only
 
 // Custom Byte Array
 struct CustomByteArray {

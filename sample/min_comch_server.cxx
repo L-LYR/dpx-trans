@@ -1,3 +1,7 @@
+#if 0
+/usr/bin/clang++-18 -Wall -Wextra -pedantic -std=c++20 $(pkg-config --libs doca-common doca-comch) $(pkg-config --cflags doca-common doca-comch) "$0"; if [ $? -eq 0 ]; then ./a.out "$@"; rm ./a.out; fi; exit
+#endif
+
 #include <doca_buf.h>
 #include <doca_buf_pool.h>
 #include <doca_comch.h>
