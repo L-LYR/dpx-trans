@@ -9,6 +9,7 @@ dpx_trans_incs = []
 dpx_trans_incs += base_incs
 
 dpx_trans_src = [
+    'provider/tcp/conn_holder.cxx',
     'util/hex_dump.cxx',
     'util/spin_lock.cxx',
     'util/thread_util.cxx',

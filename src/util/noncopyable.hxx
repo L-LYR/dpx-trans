@@ -1,6 +1,6 @@
 #pragma once
 
-namespace dpx {
+namespace dpx::trans {
 
 class Noncopyable {
  protected:
@@ -12,4 +12,4 @@ class Noncopyable {
   Noncopyable &operator=(const Noncopyable &) = delete;
 };
 
-}  // namespace dpx
+}  // namespace dpx::trans

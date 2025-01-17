@@ -1,14 +1,14 @@
 #include "util/hex_dump.hxx"
+
 #include <iomanip>
 #include <sstream>
 
-namespace dpx {
+namespace dpx::trans {
 
 std::string Hexdump::to_string(size_t row_size, bool show_ascii) const {
   std::stringstream out;
   out.fill('0');
-  out << "Address: " << std::uppercase << std::hex << "0x"
-      << reinterpret_cast<uintptr_t>(s.data()) << "\n"
+  out << "Address: " << std::uppercase << std::hex << "0x" << reinterpret_cast<uintptr_t>(s.data()) << "\n"
       << "Length:  " << std::dec << s.size() << '\n'
       << "Content: ";
   for (auto i = 0uz; i < s.size(); i += row_size) {
@@ -34,4 +34,4 @@ std::string Hexdump::to_string(size_t row_size, bool show_ascii) const {
   return out.str();
 }
 
-} // namespace dpx
+}  // namespace dpx::trans

@@ -4,7 +4,7 @@
 #include <iostream>
 #include <source_location>
 
-namespace dpx {
+namespace dpx::trans {
 
 namespace details {
 inline std::string to_string(const std::source_location& l) {
@@ -19,16 +19,16 @@ struct Footprint {
 
 [[noreturn]] inline void die(std::string why) { throw std::runtime_error(why); }
 
-#define die(fmt, ...)                                                 \
-  dpx::die(dpx::details::to_string(std::source_location::current()) + \
-           std::vformat(fmt, std::make_format_args(__VA_ARGS__)))
+#define die(fmt, ...)                                                               \
+  dpx::trans::die(dpx::trans::details::to_string(std::source_location::current()) + \
+                  std::vformat(fmt, std::make_format_args(__VA_ARGS__)))
 
 #ifdef ENABLE_FOOTPRINT
-#define footprint(fmt, ...)                                                        \
-  dpx::Footprint::trace(dpx::details::to_string(std::source_location::current()) + \
-                        std::vformat(fmt, std::make_format_args(__VA_ARGS__)))
+#define footprint(fmt, ...)                                                                      \
+  dpx::trans::Footprint::trace(dpx::trans::details::to_string(std::source_location::current()) + \
+                               std::vformat(fmt, std::make_format_args(__VA_ARGS__)))
 #else
 #define footprint(fmt, ...) (void)
 #endif
 
-}  // namespace dpx
+}  // namespace dpx::trans

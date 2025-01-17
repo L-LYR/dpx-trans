@@ -4,7 +4,7 @@
 #include <emmintrin.h>
 #endif
 
-namespace dpx {
+namespace dpx::trans {
 
 namespace {
 
@@ -33,4 +33,4 @@ bool SpinLock::try_lock() { return !b.load(std::memory_order_relaxed) && !b.exch
 
 void SpinLock::unlock() { b.store(false, std::memory_order_release); }
 
-}  // namespace dpx
+}  // namespace dpx::trans

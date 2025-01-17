@@ -6,18 +6,20 @@
 
 using namespace std::literals;
 
+using namespace dpx::trans;
+
 int main() {
-  dpx::set_thread_name("main");
+  set_thread_name("main");
 
-  dpx::Timer t;
+  Timer t;
 
-  dpx::bind_core(7777);
+  bind_core(7777);
 
   std::this_thread::sleep_for(1s);
 
   std::cout << t.elapsed_ns() << std::endl;
 
-  std::cout << dpx::get_thread_name() << std::endl;
+  std::cout << get_thread_name() << std::endl;
 
   return 0;
 }

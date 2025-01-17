@@ -7,7 +7,7 @@
 #include "util/fatal.hxx"
 #include "util/logger.hxx"
 
-namespace dpx {
+namespace dpx::trans {
 
 void set_thread_name(std::string name) {
   if (name.size() > 16) {
@@ -40,4 +40,4 @@ void bind_core(size_t core_idx) {
   }
 }
 
-}  // namespace dpx
+}  // namespace dpx::trans

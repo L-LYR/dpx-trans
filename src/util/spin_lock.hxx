@@ -2,7 +2,7 @@
 
 #include <atomic>
 
-namespace dpx {
+namespace dpx::trans {
 
 class alignas(64) SpinLock {
  public:
@@ -17,4 +17,4 @@ class alignas(64) SpinLock {
   std::atomic_bool b = false;
 };
 
-}  // namespace dpx
+}  // namespace dpx::trans

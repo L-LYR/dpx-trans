@@ -2,7 +2,7 @@
 
 #include <chrono>
 
-namespace dpx {
+namespace dpx::trans {
 
 class Timer {
   using clock = std::chrono::high_resolution_clock;
@@ -31,4 +31,4 @@ class Timer {
   time_point b;
 };
 
-}  // namespace dpx
+}  // namespace dpx::trans

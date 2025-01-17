@@ -1,6 +1,6 @@
 #pragma once
 
-namespace dpx {
+namespace dpx::trans {
 
 class Nonmovable {
  protected:
@@ -12,4 +12,4 @@ class Nonmovable {
   Nonmovable& operator=(Nonmovable&&) = delete;
 };
 
-}  // namespace dpx
+}  // namespace dpx::trans

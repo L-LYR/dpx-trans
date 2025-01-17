@@ -2,7 +2,7 @@
 
 #include <cstdint>
 
-namespace dpx::literal {
+namespace dpx::trans::literal {
 
 constexpr auto operator""_KB(unsigned long long int x) -> uint64_t { return 1024ULL * x; }
 
@@ -14,7 +14,7 @@ constexpr auto operator""_TB(unsigned long long int x) -> uint64_t { return 1024
 
 constexpr auto operator""_PB(unsigned long long int x) -> uint64_t { return 1024_TB * x; }
 
-}  // namespace dpx::literal
+}  // namespace dpx::trans::literal
 
 // How to use:
-//  Add the following line `using namespace dpx::literal;`
+//  Add the following line `using namespace dpx::trans::literal;`
