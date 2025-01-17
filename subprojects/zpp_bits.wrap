@@ -1,0 +1,9 @@
+[wrap-git]
+url = https://github.com/L-LYR/zpp_bits
+depth = 1
+direcotry = zpp_bits
+revision = dev/custom_buffer
+patch_directory = zpp_bits
+
+[provide]
+dependency_names = zpp_bits

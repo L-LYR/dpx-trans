@@ -1,0 +1,9 @@
+[wrap-git]
+url = https://github.com/sharkdp/dbg-macro
+depth = 1
+direcotry = dbg-macro
+revision = master
+patch_directory = dbg-macro
+
+[provide]
+dependency_names = dbg-macro

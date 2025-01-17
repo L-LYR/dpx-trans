@@ -1,0 +1,9 @@
+[wrap-git]
+url = https://github.com/rigtorp/MPMCQueue
+depth = 1
+direcotry = MPMCQueue
+revision = master
+patch_directory = MPMCQueue
+
+[provide]
+dependency_names = MPMCQueue

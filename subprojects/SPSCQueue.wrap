@@ -1,0 +1,9 @@
+[wrap-git]
+url = https://github.com/rigtorp/SPSCQueue
+depth = 1
+direcotry = SPSCQueue
+revision = master
+patch_directory = SPSCQueue
+
+[provide]
+dependency_names = SPSCQueue

@@ -1,0 +1,9 @@
+[wrap-git]
+url = https://github.com/Taywee/args
+depth = 1
+direcotry = args
+revision = master
+patch_directory = args
+
+[provide]
+dependency_names = args

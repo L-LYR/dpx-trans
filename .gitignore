@@ -1,0 +1,9 @@
+.vscode
+.cache
+.trash
+
+/build
+
+/subprojects/*
+!/subprojects/*.wrap
+!/subprojects/packagefiles

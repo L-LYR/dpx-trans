@@ -1,0 +1,5 @@
+[wrap-git]
+url = https://github.com/simdutf/simdutf
+depth = 1
+direcotry = simdutf
+revision = master
