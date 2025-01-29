@@ -3,7 +3,15 @@
 #include <iomanip>
 #include <sstream>
 
+#include "util/fatal.hxx"
+
 namespace dpx::trans {
+
+Hexdump::Hexdump(const std::span<const uint8_t> s_) : s(s_) {
+  if (s.data() == nullptr && s.size() > 0) {
+    die("Got nullptr but length({}) > 0", s.size());
+  }
+}
 
 std::string Hexdump::to_string(size_t row_size, bool show_ascii) const {
   std::stringstream out;

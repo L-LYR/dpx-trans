@@ -72,7 +72,10 @@ args_dep = subproject('args').get_variable('args_dep')
 ## dbg-macro
 dbg_dep = subproject('dbg-macro').get_variable('dbg_macro_dep')
 ## zpp_bits
-zpp_bits_dep = subproject('zpp_bits').get_variable('zpp_bits_dep')
+zpp_bits_dep = subproject(
+    'zpp_bits',
+    required: true,
+).get_variable('zpp_bits_dep')
 ## spdlog
 spdlog_dep = subproject(
     'spdlog',
@@ -108,4 +111,7 @@ base_incs = [
 
 subdir('include')
 subdir('src')
-subdir('example')
+
+if get_option('enable_test')
+    subdir('test')
+endif

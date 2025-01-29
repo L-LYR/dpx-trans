@@ -10,9 +10,12 @@ namespace dpx::trans {
 struct Hexdump {
   inline constexpr static char hex_lookup[] = "0123456789ABCDEF";
 
-  explicit Hexdump(const std::span<uint8_t> s_) : s(s_) {}
+  explicit Hexdump(const std::span<const uint8_t> s_);
 
-  Hexdump(const void *data, size_t length) : s(reinterpret_cast<const uint8_t *>(data), length) {}
+  explicit Hexdump(const std::span<uint8_t> s_) : Hexdump(std::span<const uint8_t>(s_.data(), s_.size())) {}
+
+  Hexdump(const void *data, size_t length)
+      : Hexdump(std::span<const uint8_t>(reinterpret_cast<const uint8_t *>(data), length)) {}
 
   std::string to_string(size_t row_size = 16, bool show_ascii = true) const;
 
