@@ -15,8 +15,14 @@ class Endpoint {
   Endpoint() {}
   ~Endpoint() {}
 
+  
+
  private:
+  template <Op op>
+  void post();
+
   Side s;
+  io_uring ring;
   int conn = -1;
 };
 

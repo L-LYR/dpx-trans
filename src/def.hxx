@@ -19,6 +19,13 @@ enum class Side : uint32_t {
   ServerSide,
 };
 
+enum class Op : uint32_t {
+  Send,
+  Recv,
+  Read,
+  Write,
+};
+
 }  // namespace dpx::trans
 
 // clang-format off
@@ -34,4 +41,10 @@ EnumFormatter(dpx::trans::Side,
     [dpx::trans::to_underlying(dpx::trans::Side::ClientSide)] = "Client",
 );
 
+EnumFormatter(dpx::trans::Op,
+    [dpx::trans::to_underlying(dpx::trans::Op::Send)]  = "Send",
+    [dpx::trans::to_underlying(dpx::trans::Op::Recv)]  = "Recv",
+    [dpx::trans::to_underlying(dpx::trans::Op::Read)]  = "Read",
+    [dpx::trans::to_underlying(dpx::trans::Op::Write)] = "Write",
+);
 // clang-format on
