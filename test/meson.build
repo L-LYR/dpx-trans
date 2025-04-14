@@ -11,3 +11,9 @@ executable(
     files('util_test.cxx'),
     dependencies: [dpx_trans_dep, catch2_with_main_dep],
 )
+executable(
+    'tcp_conn_holder',
+    files('tcp_conn_holder.cxx'),
+    dependencies: [dpx_trans_dep, catch2_with_main_dep],
+)
+

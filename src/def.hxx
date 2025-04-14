@@ -19,19 +19,20 @@ enum class Side : uint32_t {
   ServerSide,
 };
 
+enum class Op : uint32_t {
+  Send,
+  Recv,
+  Read,
+  Write,
+};
+
+enum class ErrorCode : ssize_t {
+  Nop = -10086,
+  EndpointIsStopping,
+};
+
 }  // namespace dpx::trans
 
-// clang-format off
-EnumFormatter(dpx::trans::Backend,
-    [dpx::trans::to_underlying(dpx::trans::Backend::TCP)]        = "TCP",
-    [dpx::trans::to_underlying(dpx::trans::Backend::Verbs)]      = "Verbs",
-    [dpx::trans::to_underlying(dpx::trans::Backend::DOCA_Comch)] = "DOCA Comch",
-    [dpx::trans::to_underlying(dpx::trans::Backend::DOCA_RDMA)]  = "DOCA RDMA",
-);
-
-EnumFormatter(dpx::trans::Side,
-    [dpx::trans::to_underlying(dpx::trans::Side::ServerSide)] = "Server",
-    [dpx::trans::to_underlying(dpx::trans::Side::ClientSide)] = "Client",
-);
-
-// clang-format on
+EnumFormatter(4, dpx::trans::Backend, TCP, Verbs, DOCA_Comch, DOCA_RDMA);
+EnumFormatter(2, dpx::trans::Side, ServerSide, ClientSide);
+EnumFormatter(4, dpx::trans::Op, Send, Recv, Read, Write);
