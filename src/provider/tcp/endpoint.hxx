@@ -1,38 +1,43 @@
 #pragma once
 
-#include <liburing.h>
+#include <asio.hpp>
 
-#include "context.hxx"
+#include "def.hxx"
+#include "memory_region.hxx"
+#include "util/logger.hxx"
+#include "util/noncopyable.hxx"
+#include "util/unreachable.hxx"
 
 namespace dpx::trans::tcp {
 
-class ConnHolder;
-
-class Endpoint {
-  friend class ConnHolder;
-
+class Endpoint : Noncopyable {
  public:
-  explicit Endpoint(size_t queue_depth);
-  ~Endpoint();
+  explicit Endpoint(asio::ip::tcp::socket conn_) : conn(std::move(conn_)) {}
 
-  bool is_running() { return running.load(std::memory_order_relaxed); }
-  bool has_pending_message() { return outstanding_sqe.load(std::memory_order_relaxed) > 0; }
-  bool progress();
+  ~Endpoint() { conn.close(); };
 
-  op_res_future_t post(Context& ctx);
+  Endpoint(Endpoint&& other) : conn(std::move(other.conn)) {}
+  Endpoint& operator=(Endpoint&& other) {
+    if (this != &other) {
+      conn = std::move(other.conn);
+    }
+    return *this;
+  }
 
- protected:
-  void start() { running = true; }
-  void stop() { running = false; }
-
-  void _post(Context& ctx);
+  template <Op op>
+  asio::awaitable<size_t> post(MemoryRegion& mr) {
+    LOG_DEBUG("tcp post {} {}", op, mr);
+    if constexpr (op == Op::Send || op == Op::Write) {
+      co_return co_await asio::async_write(conn, asio::const_buffer(mr.raw_data(), mr.size()), asio::use_awaitable);
+    } else if constexpr (op == Op::Recv || op == Op::Read) {
+      co_return co_await asio::async_read(conn, asio::mutable_buffer(mr.raw_data(), mr.size()), asio::use_awaitable);
+    } else {
+      static_unreachable;
+    }
+  }
 
  private:
-  std::atomic_bool running = false;
-  io_uring ring;
-  size_t queue_depth = 0;
-  std::atomic_size_t outstanding_sqe = 0;
-  int conn = -1;
+  asio::ip::tcp::socket conn;
 };
 
 }  // namespace dpx::trans::tcp

@@ -21,6 +21,8 @@ c_cpp_extra_args = [
     '-Wno-zero-length-array',
     '-Wno-deprecated-enum-enum-conversion',
     '-Wno-flexible-array-extensions',
+    '-DASIO_HAS_IO_URING',
+    '-DASIO_DISABLE_EPOLL',
 ]
 
 cpp_extra_args = [
@@ -62,15 +64,17 @@ glaze_dep = cmake.subproject('glaze', options: glaze_opt).dependency(
     'glaze_glaze',
 )
 ## Boost.Fiber
-boost_fiber_dep = dependency(
-    'boost',
-    modules: ['fiber', 'context'],
-    required: true,
-)
+# boost_fiber_dep = dependency(
+#     'boost',
+#     modules: ['fiber', 'context'],
+#     required: true,
+# )
+## asio
+asio_dep = subproject('asio').get_variable('asio_dep')
 ## args
 args_dep = subproject('args').get_variable('args_dep')
 ## dbg-macro
-dbg_dep = subproject('dbg-macro').get_variable('dbg_macro_dep')
+# dbg_dep = subproject('dbg-macro').get_variable('dbg_macro_dep')
 ## zpp_bits
 zpp_bits_dep = subproject(
     'zpp_bits',

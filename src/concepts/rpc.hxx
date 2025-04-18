@@ -14,6 +14,8 @@ concept Rpc = requires(T rpc) {
   typename T::Request;
   typename T::Response;
   typename T::Handler;
+  typename T::Serializer;
+  typename T::Deserializer;
   { rpc.id } -> std::same_as<rpc_id_t>;
 };
 
@@ -25,6 +27,12 @@ using resp_t = typename Rpc::Response;
 
 template <Rpc Rpc>
 using handler_t = typename Rpc::Handler;
+
+template <Rpc Rpc>
+using serializer_t = typename Rpc::Serializer;
+
+template <Rpc Rpc>
+using deserializer_t = typename Rpc::Deserializer;
 
 template <typename T, Rpc rpc>
 struct is_handler_of : std::is_same<T, typename rpc::Handler> {};

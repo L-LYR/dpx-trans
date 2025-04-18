@@ -2,6 +2,7 @@
 
 #include <bits/types/struct_iovec.h>
 
+#include <cassert>
 #include <cstdint>
 
 #include "util/fatal.hxx"
@@ -25,6 +26,8 @@ class MemoryRegion {
   ~MemoryRegion() = default;
 
   uintptr_t address() const { return base; }
+  void *raw_data() { return reinterpret_cast<void *>(base); }
+  const void *raw_data() const { return reinterpret_cast<const void *>(base); }
   uint8_t *data() { return reinterpret_cast<uint8_t *>(base); }
   const uint8_t *data() const { return reinterpret_cast<const uint8_t *>(base); }
   size_t size() const { return len; }
@@ -56,6 +59,15 @@ class MemoryRegion {
   operator std::span<uint8_t>() { return std::span<uint8_t>(data(), size()); }
   operator std::span<const uint8_t>() const { return std::span<const uint8_t>(data(), size()); }
   operator iovec() { return iovec{.iov_base = reinterpret_cast<void *>(data()), .iov_len = size()}; }
+
+  uint8_t &operator[](size_t i) {
+    assert(i >= 0 && i < size());
+    return data()[i];
+  }
+  const uint8_t &operator[](size_t i) const {
+    assert(i >= 0 && i < size());
+    return data()[i];
+  }
 
  protected:
   uintptr_t base = 0;

@@ -12,8 +12,8 @@ executable(
     dependencies: [dpx_trans_dep, catch2_with_main_dep],
 )
 executable(
-    'tcp_conn_holder',
-    files('tcp_conn_holder.cxx'),
+    'tcp',
+    files('tcp.cxx'),
     dependencies: [dpx_trans_dep, catch2_with_main_dep],
 )
 
